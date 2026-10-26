@@ -12,6 +12,7 @@ Usage:
   plan.py <root> impact <id>       # what adding or changing <id> does to the plan
   plan.py <root> verify [<id>]     # run the verify command of <id>, or of every todo node
   plan.py <root> refine            # outline nodes close enough to break into briefs now
+  plan.py <root> overview          # readable summary of the plan, grouped by milestone
 Options: --json, --max-parallel N (default 4), --budget TOKENS (default 20000),
          --upto must|should|could|later (default could: schedule everything except parked work)
 """
@@ -683,6 +684,79 @@ def verify(nids, nodes, cwd, timeout):
     return results
 
 
+def goal_heading(root):
+    """Title and first paragraph of the outcome from GOAL.md."""
+    goal = root / "GOAL.md"
+    if not goal.exists():
+        return root.name, ""
+    text = goal.read_text()
+    if text.startswith("---"):
+        end = text.find("\n---", 3)
+        text = text[end + 4:] if end != -1 else text
+    title = next((l[2:].strip() for l in text.splitlines() if l.startswith("# ")), root.name)
+    outcome = ""
+    m = re.search(r"^## Outcome\s*\n+(.+?)(\n\n|\n#|$)", text, re.S | re.M)
+    if m:
+        outcome = " ".join(m.group(1).split())
+    return title, outcome
+
+
+def overview(root, nodes, contracts, s, milestones, warnings):
+    """A readable summary of the plan, as markdown."""
+    lv = live(nodes)
+    wave_of = {k: i + 1 for i, w in enumerate(s["waves"]) for k in w}
+    title, outcome = goal_heading(root)
+    out = [f"# {title}", ""]
+    if outcome:
+        out += [outcome, ""]
+    counts = {}
+    for n in lv.values():
+        key = "outline" if n["outline"] and n["status"] not in DONE else n["status"]
+        counts[key] = counts.get(key, 0) + 1
+    out.append("**Nodes:** " + ", ".join(f"{v} {k}" for k, v in sorted(counts.items())))
+    if "must" in s["priority_waves"]:
+        out.append(f"**Must line:** all must work placed by wave {s['priority_waves']['must']}")
+    if s["critical_path"]:
+        out.append(f"**Critical path:** {' -> '.join(s['critical_path'])}")
+    due = [k for w in s["waves"][:DEFAULT_HORIZON] for k in w if lv[k]["outline"]]
+    if due:
+        out.append(f"**Refine next:** {', '.join(due)}")
+    out.append("")
+
+    def line(k):
+        n = lv[k]
+        mark = {"done": "x", "released": "x", "active": "~"}.get(n["status"], " ")
+        bits = [s["priority"].get(k, n["priority"]), n["size"] or "?"]
+        if n.get("target_eff"):
+            bits.append(f"-> {n['target_eff']}")
+        if n["outline"]:
+            bits.append("outline")
+        if n["status"] in ("active", "released"):
+            bits.append(n["status"])
+        elif n["status"] not in DONE:
+            bits.append(f"wave {wave_of.get(k, '-')}")
+        deps = sorted({d.get("on") for d in n["deps"] if isinstance(d, dict) and d.get("on") in lv})
+        after = f" (after {', '.join(deps)})" if deps else ""
+        return f"- [{mark}] **{k}**: {n['title']} [{', '.join(bits)}]{after}"
+
+    groups = {}
+    for k, n in lv.items():
+        groups.setdefault(n["milestone"] or "", []).append(k)
+    order = list(milestones or []) + sorted(g for g in groups if g and g not in (milestones or []))
+    if "" in groups:
+        order.append("")
+    for name in order:
+        if name not in groups:
+            continue
+        out.append(f"## {name}" if name else ("## Other work" if len(groups) > 1 else "## Work"))
+        ids = sorted(groups[name], key=lambda k: (lv[k]["status"] not in DONE,
+                                                  wave_of.get(k, 99), PRIORITIES.get(lv[k]["priority"], 1), k))
+        out += [line(k) for k in ids] + [""]
+    if warnings:
+        out.append(f"**Warnings ({len(warnings)}):** run `plan.py check` for the list.")
+    return "\n".join(out).rstrip() + "\n"
+
+
 def rel(path):
     return os.path.relpath(path)
 
@@ -786,7 +860,8 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("root", type=Path)
     ap.add_argument("command", nargs="?", default="status",
-                    choices=["status", "check", "waves", "ready", "context", "impact", "verify", "refine"])
+                    choices=["status", "check", "waves", "ready", "context", "impact", "verify", "refine",
+                             "overview"])
     ap.add_argument("node", nargs="?")
     ap.add_argument("--json", action="store_true")
     ap.add_argument("--max-parallel", type=int, default=4)
@@ -915,6 +990,9 @@ def main():
     if milestones:
         order = {m: i for i, m in enumerate(milestones)}
         s["groups"] = dict(sorted(s["groups"].items(), key=lambda kv: order.get(kv[0], len(order))))
+    if args.command == "overview":
+        print(overview(args.root, nodes, contracts, s, milestones, warnings), end="")
+        return
     if args.json:
         print(json.dumps({"errors": errors, "warnings": warnings, **s}, indent=2))
         return

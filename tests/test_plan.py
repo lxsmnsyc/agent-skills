@@ -215,6 +215,21 @@ class PlanTest(unittest.TestCase):
         self.assertEqual(groups["q1"]["last_wave"], 1)
         self.assertEqual(groups["q2"], {"open": 1, "outline": 1, "done": 0, "last_wave": 2})
 
+    def test_overview_groups_by_milestone(self):
+        (self.root / "GOAL.md").write_text(
+            "---\nmilestones: [q1, q2]\n---\n# Sync\n\n## Outcome\n\nEdits sync.\n")
+        node(self.root, "a", size="M", owns="[a/**]", milestone="q1", priority="must", title="API")
+        node(self.root, "b", size="L", milestone="q2", outline="true", title="Offline",
+             depends_on=dep("a", "hard", why="x"))
+        nodes, contracts, (errors, warnings) = self.load()
+        s = plan.schedule(nodes, contracts, 4)
+        text = plan.overview(self.root, nodes, contracts, s, plan.goal_milestones(self.root), warnings)
+        self.assertIn("# Sync", text)
+        self.assertIn("Edits sync.", text)
+        self.assertLess(text.index("## q1"), text.index("## q2"))
+        self.assertIn("- [ ] **a**: API [must, M, wave 1]", text)
+        self.assertIn("**b**: Offline [should, L, outline, wave 2] (after a)", text)
+
     def test_large_plan_of_sized_nodes_does_not_warn(self):
         for i in range(30):
             node(self.root, f"n{i}", size="M", owns=f"[src/n{i}/**]")

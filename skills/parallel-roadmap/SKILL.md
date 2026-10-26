@@ -18,7 +18,7 @@ Ask yourself what the user needs right now, then go to that phase. Do not run al
 | review or harden a plan | 3. Stress-test |
 | run the next batch of work | 6. Execute |
 | add a feature or change scope while work is running | Change (below) |
-| know where things stand | run `plan.py <root> status` and summarize |
+| know where things stand | show `plan.py <root> overview` |
 | close out a roadmap | 8. Close |
 | bring a roadmap made with an older version of this skill up to date | Upgrade (below) |
 
@@ -56,6 +56,7 @@ python3 <skill>/scripts/plan.py <root> context <id>    # the files an agent on <
 python3 <skill>/scripts/plan.py <root> impact <id>     # what adding <id> does: overlaps, contracts, critical path
 python3 <skill>/scripts/plan.py <root> verify [<id>]   # run verify commands; finds todo nodes that are already fulfilled
 python3 <skill>/scripts/plan.py <root> refine          # outline nodes close enough to break into full briefs now
+python3 <skill>/scripts/plan.py <root> overview        # readable summary for the user, grouped by milestone
 ```
 
 Options: `--max-parallel N` (default 4), `--budget TOKENS` (default 20000), `--upto must|should|could|later`, `--cwd DIR` (where verify commands run, the repo root).
@@ -136,7 +137,9 @@ Read `references/blindspots.md`. Scale the effort to the plan: for a few nodes, 
 2. Write a premortem in `reviews/premortem.md`: assume the roadmap failed, list the five most likely reasons, and turn each into a mitigation, a new node or a spike.
 3. Spawn a reviewer agent with fresh context, using the prompt in `references/blindspots.md`. Give it only the roadmap directory and the repo, not your reasoning, because a reviewer that sees your reasoning tends to agree with it. It checks only the three areas where errors change the plan's shape: contracts against the real code, owned paths around shared files, and dependency edges. Save the result in `reviews/adversarial.md` and apply what holds up.
 
-Show the user the plan summary and get their approval before execution. This is the cheapest point to change direction. Quote the waves, milestones and critical path from a fresh `plan.py status` run instead of restating them from memory, because the script is the source of truth and a plan edited after the last run drifts from what you remember. List the main risks and every assumption the user should confirm.
+Show the user the plan and get their approval before execution. This is the cheapest point to change direction. Paste the output of a fresh `plan.py <root> overview` run into the chat: the goal, each milestone with its nodes, the must line, the critical path and what to refine next. Do not restate the plan from memory, because the script is the source of truth and a plan edited after the last run drifts from what you remember. Below it, list the main risks and every assumption the user should confirm.
+
+Show the overview again whenever the plan changes shape: after an addition (Change), an upgrade, or a curator pass that added, split or dropped nodes.
 
 ## 4. Contracts
 
@@ -198,7 +201,7 @@ Every field added since the first version is optional, so an old roadmap still l
 5. **Branches.** If the repo has more than one integration branch (pr-review's `branch_policy.py` tells), add the `branches:` map to `GOAL.md` and a `type:` to each open node.
 6. **Coverage.** If the roadmap was imported from existing documents, add the "Coverage" section to `GOAL.md` and map every source step.
 7. Where they help, add `verify:` commands, `exclusive:` tags for single-use resources, and `fulfilled_by:` on nodes that turn out to be done already (`plan.py verify` finds candidates).
-8. Run `plan.py <root> status` again, and report the milestones, the must line and the "refine now" list.
+8. Run `plan.py <root> check`, then show the user `plan.py <root> overview`.
 
 Never change `status` fields or the briefs of active nodes during an upgrade.
 
