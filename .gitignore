@@ -1,0 +1,6 @@
+*-workspace/
+__pycache__/
+.DS_Store
+
+# Eval cases about private repos stay local. Name them private-*.
+skills/*/evals/private-*/

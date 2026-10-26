@@ -1,0 +1,116 @@
+export const meta = {
+  name: 'parallel-roadmap-wave',
+  description: 'Run one wave of a parallel roadmap: one worker per ready node in its own worktree, then a curator pass',
+  whenToUse: 'Driven by the parallel-roadmap skill. Pass args from `plan.py <root> ready --json`.',
+  phases: [
+    { title: 'Work', detail: 'one worker per node, each in a git worktree' },
+    { title: 'Curate', detail: 'read outcomes, propose learnings and plan updates' },
+  ],
+}
+
+// args: { root, skill, base, nodes: [{ id, title, model, context: [paths] }] }
+// `base` is the branch pull requests target (usually main). Check it out before running,
+// so worktrees start from it. The orchestrator reviews, updates status and handles gates
+// after this returns.
+
+const REPORT = {
+  type: 'object',
+  properties: {
+    id: { type: 'string' },
+    branch: { type: 'string' },
+    pr: { type: 'string' },
+    already_fulfilled: { type: 'boolean' },
+    acceptance_pass: { type: 'boolean' },
+    outcome_written: { type: 'boolean' },
+    change_requests: { type: 'array', items: { type: 'string' } },
+    blockers: { type: 'array', items: { type: 'string' } },
+    summary: { type: 'string' },
+  },
+  required: ['id', 'branch', 'pr', 'already_fulfilled', 'acceptance_pass', 'outcome_written', 'change_requests', 'blockers', 'summary'],
+}
+
+const CURATION = {
+  type: 'object',
+  properties: {
+    learnings: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          rule: { type: 'string' },
+          reason: { type: 'string' },
+          folder: { type: 'string' },
+          enforce_with_test: { type: 'boolean' },
+        },
+        required: ['rule', 'reason', 'folder', 'enforce_with_test'],
+      },
+    },
+    brief_updates: { type: 'array', items: { type: 'string' } },
+    change_requests: { type: 'array', items: { type: 'string' } },
+    new_nodes: { type: 'array', items: { type: 'string' } },
+    calibration: { type: 'array', items: { type: 'string' } },
+    report: { type: 'string' },
+  },
+  required: ['learnings', 'brief_updates', 'change_requests', 'new_nodes', 'calibration', 'report'],
+}
+
+const { root, skill, base, nodes } = args
+if (!Array.isArray(nodes) || nodes.length === 0) {
+  log('No ready nodes were passed in args.nodes; nothing to run.')
+  return { reports: [], curation: null }
+}
+
+function workerPrompt(n) {
+  return `You are the worker for node \`${n.id}\` ("${n.title}") of the roadmap in \`${root}\`. Several other agents are working on other nodes at the same time, each in its own git worktree. Your work must stay inside your own node so that everyone's branches merge cleanly.
+
+First create a branch named \`roadmap/${n.id}\` from the current HEAD and work on it.
+
+Read these files in this order. They are all the context you need; do not read other nodes' logs.
+${n.context.map(p => `- ${p}`).join('\n')}
+
+Then:
+0. Check first whether the work already exists. Run the brief's \`verify\` command if it has one, and look at the code its acceptance criteria describe. If every criterion already holds, make no code changes: write the outcome with "Already fulfilled" and the evidence, commit it, skip the pull request, and report already_fulfilled=true. If some criteria hold, do only the rest.
+1. If \`${root}/nodes/${n.id}/log.md\` exists, you are resuming. Continue from where it stops.
+2. Do the work in the brief. Edit only the brief's owned paths and \`${root}/nodes/${n.id}/\`. If you must touch another file, keep the change minimal and record it under Deviations in your outcome.
+3. Use only the numbers your brief reserves for migrations, decision records or other numbered files.
+4. Build against stubs for \`behavior\` dependencies. Do not wait for them.
+5. If a contract is wrong, write \`${root}/contracts/<name>.change-request.md\` from \`${skill}/templates/change-request.md\`, adapt locally, and continue. Do not edit the contract.
+6. Append short notes to \`${root}/nodes/${n.id}/log.md\` as you go.
+7. Run the fast check from GOAL.md. Do not run the full check unless your brief says so.
+8. Write \`${root}/nodes/${n.id}/outcome.md\` from \`${skill}/templates/outcome.md\`. Later agents read only this file.
+9. Do not change \`status\` in your brief. Commit everything on your branch with the message "${n.id}: ${n.title}".
+10. Push the branch and open a pull request against \`${base}\` (follow the pr-author skill if it is installed). Link \`${root}/nodes/${n.id}/brief.md\` in the description. Do not merge or approve it. Report its number as pr, or "" if you made no pull request.`
+}
+
+phase('Work')
+const reports = await parallel(nodes.map(n => () =>
+  agent(workerPrompt(n), {
+    label: `node:${n.id}`,
+    phase: 'Work',
+    isolation: 'worktree',
+    schema: REPORT,
+    ...(n.model ? { model: n.model } : {}),
+  })))
+
+const done = reports.filter(Boolean)
+const missing = nodes.filter(n => !done.some(r => r.id === n.id)).map(n => n.id)
+if (missing.length) log(`No report from: ${missing.join(', ')}. Reopen these nodes.`)
+
+// Barrier on purpose: the curator compares all outcomes of the wave together.
+phase('Curate')
+const curation = await agent(`You are the curator for the roadmap in \`${root}\`. A wave of workers just finished. Their branches are not merged yet, so read their files with \`git show <branch>:<path>\`.
+
+Worker reports:
+${JSON.stringify(done, null, 2)}
+
+Read \`${skill}/references/memory.md\` (the curator section) and follow it, with one difference: do not edit any files. Return proposals only; the orchestrator applies them after merging.
+
+For each branch, read \`${root}/nodes/<id>/outcome.md\` and any \`${root}/contracts/*.change-request.md\` it added. Then return:
+- learnings: lasting rules about the code worth a nested CLAUDE.md, with the folder they apply to. Mark the ones a test, type or lint rule could enforce instead.
+- brief_updates: downstream briefs that must change because an outcome deviated from the plan, each as "<node id>: <change>".
+- change_requests: each open request with your recommendation (accept or reject, and why).
+- new_nodes: work the outcomes revealed that no node covers.
+- calibration: one line per node, "<date placeholder> <root>/<id> est <size> actual <size>: <reason>".
+- report: a short wave report for reviews/wave-<n>.md.`, { label: 'curator', phase: 'Curate', schema: CURATION })
+
+return { reports: done, missing, curation }

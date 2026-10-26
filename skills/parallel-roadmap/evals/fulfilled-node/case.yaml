@@ -1,0 +1,9 @@
+schema_version: "1.1"
+name: fulfilled-node
+expected_outcome: |
+  The password-reset node's code and tests already exist in src/server/auth/reset/. The run notices
+  this (for example with plan.py verify or by checking the code), does not schedule a worker to
+  build it again, and closes or flags it as already fulfilled with evidence. The next batch is
+  signup (and anything else genuinely ready), prepared without spawning workers.
+context:
+  scaffold_script: place-files.sh

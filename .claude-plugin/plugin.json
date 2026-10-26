@@ -1,0 +1,25 @@
+{
+  "name": "agent-skills",
+  "description": "Agent skills by lxsmnsyc: parallel-roadmap (plan and run roadmaps as a dependency graph so several agents work at once) and plain-writing (short, exact prose for people and agents, with a checker and an optional commit/PR hook).",
+  "version": "0.1.0",
+  "author": {
+    "name": "Alexis Munsayac",
+    "url": "https://github.com/lxsmnsyc"
+  },
+  "repository": "https://github.com/lxsmnsyc/agent-skills",
+  "license": "MIT",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/skills/plain-writing/scripts/hook.py\"",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}

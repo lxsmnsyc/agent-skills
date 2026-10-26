@@ -1,0 +1,9 @@
+schema_version: "1.1"
+name: stub-not-fulfilled
+expected_outcome: |
+  The password-reset files exist but contain only empty stubs, and the brief's verify command only
+  checks that the files exist, so it passes. The run does not trust the pass: it inspects the code,
+  keeps password-reset open, and puts it in the next batch alongside signup (or explains why not).
+  Ideally it also flags or strengthens the weak verify command. No workers are spawned.
+context:
+  scaffold_script: place-files.sh

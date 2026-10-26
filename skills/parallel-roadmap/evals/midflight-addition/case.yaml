@@ -1,0 +1,10 @@
+schema_version: "1.1"
+name: midflight-addition
+expected_outcome: |
+  Both ideas are captured and added as new nodes with `added:` set and a priority each
+  (rate limiting is more urgent than OAuth, given the brute force attempts). The active login
+  node's brief is not edited; work that overlaps login's owned paths waits for it or gets narrower
+  owned paths, or becomes a follow-up node with a hard dependency on login. plan.py impact or
+  status is run and its result (overlaps, milestone change) is reported to the user.
+context:
+  scaffold_script: place-files.sh

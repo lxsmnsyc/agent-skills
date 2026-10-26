@@ -1,0 +1,2 @@
+- 2026-10-25: started. Route handler in src/server/auth/login/handler.ts.
+- 2026-10-26: page done, writing handler tests.

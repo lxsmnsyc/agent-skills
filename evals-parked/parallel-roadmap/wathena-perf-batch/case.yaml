@@ -1,0 +1,9 @@
+schema_version: "1.1"
+name: wathena-perf-batch
+expected_outcome: |
+  A roadmap folder built from ADRs 0055-0060 with one brief per node, typed dependencies,
+  owned paths, sizes and priorities, contracts for shared interfaces, reserved migration and
+  ADR numbers, and a schedule showing several nodes running in parallel. Real hard chains
+  (0057 step 1 before step 5, 0055 steps in order) stay hard; independent tracks such as client
+  rendering (0060) run in the first waves. Shared files such as server/zone/zone.go and
+  migrations are handled. Nothing is built, and the user is asked to approve the plan.

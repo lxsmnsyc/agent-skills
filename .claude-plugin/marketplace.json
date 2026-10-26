@@ -1,0 +1,17 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "lxsmnsyc-agent-skills",
+  "description": "Agent skills by lxsmnsyc.",
+  "owner": {
+    "name": "Alexis Munsayac",
+    "url": "https://github.com/lxsmnsyc"
+  },
+  "plugins": [
+    {
+      "name": "agent-skills",
+      "description": "Plan and run roadmaps as a dependency graph so several agents work at once, and write short, exact prose for people and agents.",
+      "source": "./",
+      "category": "productivity"
+    }
+  ]
+}

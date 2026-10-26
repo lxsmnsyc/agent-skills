@@ -1,0 +1,9 @@
+schema_version: "1.1"
+name: brumate-backlog-priorities
+expected_outcome: |
+  A roadmap with nodes for the core, agent support and website items, each with a priority
+  that follows the user's ranking (core correctness and the agent skill are must; website and
+  the rest are lower). Batching has a hard dependency on ordered updates; the scope-ID table,
+  ordered updates and fields typed before load are recognized as touching the same core files;
+  brumate check relates to the skill by contract; the skill-checking tasks join the skill and
+  check. The schedule puts must work first and reports when the must work is done.
