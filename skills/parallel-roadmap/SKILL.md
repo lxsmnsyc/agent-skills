@@ -54,6 +54,7 @@ python3 <skill>/scripts/plan.py <root> ready --json    # nodes that can start no
 python3 <skill>/scripts/plan.py <root> context <id>    # the files an agent on <id> should load, with token estimates
 python3 <skill>/scripts/plan.py <root> impact <id>     # what adding <id> does: overlaps, contracts, critical path
 python3 <skill>/scripts/plan.py <root> verify [<id>]   # run verify commands; finds todo nodes that are already fulfilled
+python3 <skill>/scripts/plan.py <root> refine          # outline nodes close enough to break into full briefs now
 ```
 
 Options: `--max-parallel N` (default 4), `--budget TOKENS` (default 20000), `--upto must|should|could|later`, `--cwd DIR` (where verify commands run, the repo root).
@@ -100,7 +101,16 @@ Read `references/decomposition.md` before this step. It holds the sizing rubric,
 
 A node is one pull request: a change a reviewer can read in one sitting and that is safe to merge on its own. That sets the size range. Most nodes are M. There is no limit on how many nodes a roadmap has; a big goal needs many. What signals a plan cut too fine is its shape: chains of S nodes on the same files, or a plan that is mostly S. `plan.py check` warns about both, because each extra node costs a worktree, a review and a merge.
 
-For each node, write `nodes/<id>/brief.md` with priority, typed dependencies, owned paths (globs), size, acceptance criteria and a `verify` command when the acceptance can be checked by one. Keep briefs short: what the worker cannot get from the contracts and dependency outcomes, and nothing else. Then:
+### Detail where it is near, outline where it is far
+
+A roadmap can cover months or years. Planning all of it down to pull-request-sized briefs wastes effort, because far-off work changes before anyone reaches it. So cut in layers:
+
+- **Near work** (the next few waves) gets full briefs, as below.
+- **Far work** gets `outline: true` nodes: a title, a goal paragraph, a priority, rough dependencies and a size guess (XL is fine). No owned paths, acceptance criteria or contracts yet. `plan.py` schedules outlines in the forecast, never starts them, and skips its shape checks for them.
+- **Milestones** group the plan into stages that mean something to the user (a release, a quarter). List them in order in `GOAL.md` (`milestones: [...]`) and tag nodes with `milestone:`. `plan.py status` reports each milestone's open nodes, outlines, and the wave its last node lands in.
+- **Refinement happens as work approaches.** `plan.py <root> refine` lists outline nodes within the next two waves (`--horizon N` to change it). Break each into one or more full briefs at that point, using what the finished nodes taught. The curator does this at every checkpoint, so outlines become briefs a little ahead of the agents.
+
+For each detailed node, write `nodes/<id>/brief.md` with priority, typed dependencies, owned paths (globs), size, acceptance criteria and a `verify` command when the acceptance can be checked by one. Keep briefs short: what the worker cannot get from the contracts and dependency outcomes, and nothing else. Then:
 
 1. Prefer vertical slices over horizontal layers. "Login, full stack" runs beside "signup, full stack". "UI, then API, then DB" is a chain.
 2. Name every shared interface as a contract in `contracts/`, with `status: draft` and `defined_by` set to the node that will freeze it.
@@ -114,7 +124,7 @@ For each node, write `nodes/<id>/brief.md` with priority, typed dependencies, ow
    - An XL node must be split.
    - Parallelism under about 1.5x means the plan is still mostly linear.
    - A warning that a `could` node is needed by a `must` node means the low-priority work is really urgent. The script treats it as `must`. Either accept that and raise it, or cut the dependency so the `must` work does not wait on it.
-   - "All must work placed by wave N" is the number that matters most. If it is too late, move work out of `must`, or remove `must` nodes' dependencies on lower-priority work.
+   - "All must work placed by wave N", the must line, is the number that matters most. If it is too late, move work out of `must`, or remove `must` nodes' dependencies on lower-priority work.
    - A warning about S nodes in a hard chain on the same files means they should be one node. Merge them.
 
 ## 3. Stress-test
@@ -143,7 +153,7 @@ The scheduler fills each wave by priority first and critical path second, so `mu
 
 Read `references/orchestration.md` before this step. In short:
 
-1. `plan.py <root> verify` closes todo nodes whose acceptance already holds. Then `plan.py <root> ready --json` lists the nodes to start.
+1. `plan.py <root> refine` lists outline nodes that are about to be needed; break them into briefs first. `plan.py <root> verify` closes todo nodes whose acceptance already holds. Then `plan.py <root> ready --json` lists the nodes to start.
 2. Set each one to `status: active` and commit that. The orchestrator is the only writer of `status`.
 3. Spawn one agent per node with `isolation: worktree`, using `templates/worker-prompt.md` and the model the script suggests. Spawn them in one message so they run at the same time. Each worker first checks whether its work already exists, then builds and opens one pull request against the node's target branch (`target` in `ready --json`, or the main branch when there is no branch policy).
 4. Each pull request gets a fresh-context review (the pr-review skill), passes the repo's checks, and goes to the maintainer for approval. Agents do not approve their own work. A node is `done` when its pull request merges. Run the curator (phase 7) at checkpoints.
@@ -170,7 +180,7 @@ Write a short report to `reviews/wave-<n>.md` and tell the user what changed.
 
 New ideas arrive while waves are running. That is normal, and the graph makes it cheap: a new node only has to fit around the nodes it touches, not around the whole list. Read `references/changes.md` for the full procedure. In short:
 
-1. **Triage.** Decide with the user whether the idea belongs in this roadmap, in a separate roadmap, or in `<root>/inbox.md` to look at later, and give it a priority. Base it on evidence: security problems seen in the wild, data loss, broken production behavior and blocked users are `must`. Feature ideas without such evidence are usually `should` or lower. A new `must` pushes back the must milestone, so say what it costs. If it changes the outcome in `GOAL.md`, it is a scope change, so say that plainly before adding it.
+1. **Triage.** Decide with the user whether the idea belongs in this roadmap, in a separate roadmap, or in `<root>/inbox.md` to look at later, and give it a priority. Base it on evidence: security problems seen in the wild, data loss, broken production behavior and blocked users are `must`. Feature ideas without such evidence are usually `should` or lower. A new `must` pushes back the must line, so say what it costs. If it changes the outcome in `GOAL.md`, it is a scope change, so say that plainly before adding it.
 2. **Write the node.** Use the same brief template and rubric, and set `added: <date>`.
 3. **Check the impact.** Run `plan.py <root> impact <id>`. It shows whether the node can start now, which nodes it overlaps (including running ones), which contracts it uses, and how it changes the critical path and the number of waves.
 4. **Fit it in without disturbing running work.** Never edit the brief of an active node. If the new work changes what an active node is building, let that node finish against its brief and add a follow-up node with a `hard` dependency on it. If the new work needs a contract to change, write a change request; do not edit a frozen contract.

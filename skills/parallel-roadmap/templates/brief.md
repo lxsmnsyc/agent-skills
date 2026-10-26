@@ -4,6 +4,8 @@ title: <short title>
 status: todo            # todo | active | done | released | dropped (only the orchestrator changes this)
 priority: should        # must (needed now) | should (important, can ship without) | could (when capacity is free) | later (parked)
 type: feature           # feature | fix | hotfix | refactor | docs | chore | release | spike | contract
+outline: false          # true for far-off work that is not broken into a brief yet: goal, priority, rough deps and size only
+milestone:              # optional group from the milestones list in GOAL.md, e.g. a quarter or a release
 target:                 # branch the pull request targets; empty means the branch policy for this type
 from:                   # release nodes only: the branch being promoted (target is where it goes)
 size: M                 # S | M | L | XL (XL must be split)

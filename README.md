@@ -34,6 +34,7 @@ Linear roadmaps make every item wait for the one above it. Most of those waits a
 - keeps context small: each agent loads the goal, its own brief, and only the contracts and outcomes of its direct dependencies
 - moves lasting learnings into nested `CLAUDE.md` files next to the code
 - handles ideas added mid-roadmap with an impact check
+- plans long roadmaps in layers: near work as full briefs, far work as outline nodes grouped into milestones, refined as it comes within reach
 - orders work by priority (`must`, `should`, `could`, `later`) and reports when the must work is done
 
 `plan.py` needs only Python 3.

@@ -11,6 +11,7 @@ Usage:
   plan.py <root> context <id>      # files an agent working on <id> should load
   plan.py <root> impact <id>       # what adding or changing <id> does to the plan
   plan.py <root> verify [<id>]     # run the verify command of <id>, or of every todo node
+  plan.py <root> refine            # outline nodes close enough to break into briefs now
 Options: --json, --max-parallel N (default 4), --budget TOKENS (default 20000),
          --upto must|should|could|later (default could: schedule everything except parked work)
 """
@@ -32,6 +33,9 @@ TYPES = {"feature", "fix", "hotfix", "refactor", "docs", "chore", "release", "sp
 # could: worth doing when capacity is free. later: parked, not scheduled.
 PRIORITIES = {"must": 0, "should": 1, "could": 2, "later": 3}
 PRIORITY_NAMES = {v: k for k, v in PRIORITIES.items()}
+DEFAULT_MAX_PARALLEL = 4
+# Outline nodes this many waves ahead (or closer) are due to be broken into briefs.
+DEFAULT_HORIZON = 2
 CONTRACT_STATUSES = {"draft", "frozen"}
 
 
@@ -158,6 +162,8 @@ def load(root):
             "type": fm.get("type") or None,
             "target": fm.get("target") or None,
             "from": fm.get("from") or None,
+            "outline": bool(fm.get("outline")),
+            "milestone": fm.get("milestone") or None,
         }
     for path in sorted((root / "contracts").glob("*.md")):
         if path.name.endswith(".change-request.md"):
@@ -181,6 +187,18 @@ def load(root):
 # ---------------------------------------------------------------------------
 # Graph
 # ---------------------------------------------------------------------------
+
+def goal_milestones(root):
+    """Ordered milestone names from the `milestones:` list in GOAL.md frontmatter, or None."""
+    goal = root / "GOAL.md"
+    if not goal.exists():
+        return None
+    try:
+        ms = parse_frontmatter(goal.read_text(), goal).get("milestones")
+    except ValueError:
+        return None
+    return [str(m) for m in ms] if isinstance(ms, list) and ms else None
+
 
 def load_policy(root):
     """Branch policy from the `branches:` map in GOAL.md frontmatter, or None (one base branch)."""
@@ -373,8 +391,13 @@ def find_cycle(ids, preds):
 # Commands
 # ---------------------------------------------------------------------------
 
-def check(nodes, contracts, load_errors, policy=None):
+def check(nodes, contracts, load_errors, policy=None, milestones=None):
     errors, warnings = list(load_errors), []
+    if milestones:
+        for nid, n in live(nodes).items():
+            if n["milestone"] and n["milestone"] not in milestones:
+                warnings.append(f"node {nid}: milestone '{n['milestone']}' is not in GOAL.md "
+                                f"milestones ({', '.join(milestones)})")
     if policy:
         known = policy_branches(policy)
         for nid, n in live(nodes).items():
@@ -408,9 +431,9 @@ def check(nodes, contracts, load_errors, policy=None):
             errors.append(f"{where}: priority must be one of must, should, could, later")
         if n["size"] not in SIZE_POINTS:
             errors.append(f"{where}: size must be one of S, M, L, XL")
-        elif n["size"] == "XL" and n["status"] == "todo":
+        elif n["size"] == "XL" and n["status"] == "todo" and not n["outline"]:
             warnings.append(f"{where}: size XL, split it before scheduling")
-        if not n["owns"] and n["type"] != "release":
+        if not n["owns"] and n["type"] != "release" and not n["outline"]:
             warnings.append(f"{where}: no owned paths, conflicts cannot be detected")
         if (n["status"] in DONE and not n["fulfilled_by"]
                 and not (n["dir"] / "outcome.md").exists()):
@@ -441,6 +464,7 @@ def check(nodes, contracts, load_errors, policy=None):
             if kind == "hard" and not d.get("why"):
                 warnings.append(f"{dw}: hard dependency without 'why'; justify it or downgrade it")
             if (kind == "hard" and on in nodes and n["size"] == "S" and nodes[on]["size"] == "S"
+                    and not n["outline"] and not nodes[on]["outline"]
                     and n["status"] == "todo" and nodes[on]["status"] == "todo"
                     and owns_conflict(n, nodes[on])):
                 warnings.append(f"{dw}: S node in a hard chain with S node '{on}' on the same "
@@ -472,7 +496,8 @@ def check(nodes, contracts, load_errors, policy=None):
             if (n["status"] == "active" or n["status"] in DONE) and waiting:
                 warnings.append(f"node {k}: {n['status']} but its start dependencies are not done: "
                                 + ", ".join(waiting))
-        planned = [n for n in lv.values() if n["status"] not in DONE]
+        # Outline nodes are not cut yet, so shape checks skip them.
+        planned = [n for n in lv.values() if n["status"] not in DONE and not n["outline"]]
         for path, ids in hot_files(planned).items():
             warnings.append(
                 f"{path} is edited by {len(ids)} open nodes ({', '.join(ids)}); split it by "
@@ -551,7 +576,8 @@ def schedule(nodes, contracts, max_parallel, upto="could"):
 
     return {
         "priority": {k: PRIORITY_NAMES[eff[k][0]] for k in lv},
-        "milestones": milestones,
+        "priority_waves": milestones,
+        "groups": milestone_groups(waves, lv, pending),
         "parked": parked,
         "waves": waves,
         "deferred": deferred,
@@ -563,6 +589,30 @@ def schedule(nodes, contracts, max_parallel, upto="could"):
     }
 
 
+def milestone_groups(waves, lv, pending):
+    """Per named milestone: open nodes, outline nodes, and the wave its last node is placed in."""
+    groups = {}
+    wave_of = {k: i + 1 for i, w in enumerate(waves) for k in w}
+    for k, n in lv.items():
+        name = n["milestone"]
+        if not name:
+            continue
+        g = groups.setdefault(name, {"open": 0, "outline": 0, "done": 0, "last_wave": 0})
+        if n["status"] in DONE:
+            g["done"] += 1
+            continue
+        g["open"] += 1
+        g["outline"] += n["outline"]
+        g["last_wave"] = max(g["last_wave"], wave_of.get(k, 0))
+    return groups
+
+
+def refine_due(nodes, contracts, horizon, max_parallel=DEFAULT_MAX_PARALLEL):
+    """Outline nodes placed within the next `horizon` waves: break them into briefs now."""
+    s = schedule(nodes, contracts, max_parallel)
+    return [k for w in s["waves"][:horizon] for k in w if nodes[k]["outline"]]
+
+
 def ready(nodes, contracts, upto="could"):
     """Nodes that can start now, most urgent first, then longest remaining path."""
     lv = live(nodes)
@@ -572,7 +622,8 @@ def ready(nodes, contracts, upto="could"):
     pending = {k for k, n in lv.items() if n["status"] not in DONE}
     level, _ = levels(lv, succs, pending)
     out = [k for k, n in lv.items()
-           if n["status"] == "todo" and n["size"] != "XL" and eff[k][0] <= PRIORITIES[upto]
+           if n["status"] == "todo" and n["size"] != "XL" and not n["outline"]
+           and eff[k][0] <= PRIORITIES[upto]
            and all(lv[p]["status"] in DONE for p in preds[k])]
     return sorted(out, key=lambda k: (eff[k][0], -level[k], k))
 
@@ -608,7 +659,7 @@ def impact(nid, nodes, contracts, max_parallel):
     out["on_critical_path"] = nid in a["critical_path"]
     eff = effective_priority(nodes, contracts)
     out["priority"] = {"own": n["priority"], "effective": PRIORITY_NAMES[eff[nid][0]]}
-    out["milestones"] = {"with": a["milestones"], "without": b["milestones"]}
+    out["milestones"] = {"with": a["priority_waves"], "without": b["priority_waves"]}
     return out
 
 
@@ -695,10 +746,12 @@ def print_schedule(s, nodes):
                     n["size"] or "?", model_for(n)]
             if n["status"] == "active":
                 tags.append("active")
-            if n["size"] == "XL":
+            if n["size"] == "XL" and not n["outline"]:
                 tags.append("split first")
             if n["spike"]:
                 tags.append("spike")
+            if n["outline"]:
+                tags.append("outline")
             if n["gate"]:
                 tags.append("gate")
             print(f"  {k}  [{', '.join(tags)}]{tgt}  {n['title']}")
@@ -707,7 +760,17 @@ def print_schedule(s, nodes):
         for path, ks in s["shared"][i - 1]:
             print(f"  (shared {path}: edited by {', '.join(ks)}; merge in this order, "
                   "or split the file by feature in an earlier node)")
-    for pri, wave in s["milestones"].items():
+    for name, g in s["groups"].items():
+        if g["open"]:
+            extra = f", {g['outline']} outline" if g["outline"] else ""
+            print(f"milestone {name}: {g['open']} open{extra}, {g['done']} done, "
+                  f"last node placed by wave {g['last_wave']}")
+        else:
+            print(f"milestone {name}: done ({g['done']} nodes)")
+    due = [k for w in s["waves"][:DEFAULT_HORIZON] for k in w if nodes[k]["outline"]]
+    if due:
+        print(f"refine now (outline nodes within {DEFAULT_HORIZON} waves): " + ", ".join(due))
+    for pri, wave in s["priority_waves"].items():
         print(f"all {pri} work placed by wave {wave}")
     if s["parked"]:
         print("parked (not scheduled): " + ", ".join(s["parked"]))
@@ -723,12 +786,14 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("root", type=Path)
     ap.add_argument("command", nargs="?", default="status",
-                    choices=["status", "check", "waves", "ready", "context", "impact", "verify"])
+                    choices=["status", "check", "waves", "ready", "context", "impact", "verify", "refine"])
     ap.add_argument("node", nargs="?")
     ap.add_argument("--json", action="store_true")
     ap.add_argument("--max-parallel", type=int, default=4)
     ap.add_argument("--budget", type=int, default=20000)
     ap.add_argument("--upto", choices=list(PRIORITIES), default="could")
+    ap.add_argument("--horizon", type=int, default=DEFAULT_HORIZON,
+                    help="waves ahead within which outline nodes are due for refinement")
     ap.add_argument("--cwd", default=".", help="directory to run verify commands in (repo root)")
     ap.add_argument("--timeout", type=int, default=600)
     args = ap.parse_args()
@@ -738,7 +803,8 @@ def main():
     nodes, contracts, load_errors = load(args.root)
     policy = load_policy(args.root)
     apply_targets(nodes, policy)
-    errors, warnings = check(nodes, contracts, load_errors, policy)
+    milestones = goal_milestones(args.root)
+    errors, warnings = check(nodes, contracts, load_errors, policy, milestones)
 
     if args.command == "check":
         if args.json:
@@ -765,6 +831,17 @@ def main():
             print(f"total ~{total} tokens of {args.budget} budget")
             if total > args.budget:
                 print("over budget: split this node or tighten its dependencies' outcomes")
+        return
+
+    if args.command == "refine":
+        due = refine_due(nodes, contracts, args.horizon, args.max_parallel)
+        if args.json:
+            print(json.dumps(due))
+            return
+        for k in due:
+            print(f"{k}  [{nodes[k]['priority']}, {nodes[k]['size'] or '?'}]  {nodes[k]['title']}")
+        print(f"{len(due)} outline node(s) within {args.horizon} waves" if due
+              else f"no outline nodes within {args.horizon} waves")
         return
 
     if args.command == "verify":
@@ -835,6 +912,9 @@ def main():
         return
 
     s = schedule(nodes, contracts, args.max_parallel, args.upto)
+    if milestones:
+        order = {m: i for i, m in enumerate(milestones)}
+        s["groups"] = dict(sorted(s["groups"].items(), key=lambda kv: order.get(kv[0], len(order))))
     if args.json:
         print(json.dumps({"errors": errors, "warnings": warnings, **s}, indent=2))
         return

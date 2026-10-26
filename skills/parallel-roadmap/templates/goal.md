@@ -1,4 +1,5 @@
 ---
+milestones: []          # optional, in order, e.g. [0.4, 0.5, 1.0] or [2026-q4, 2027-q1]
 branches:
   # Leave this empty when every pull request targets one branch.
   # For gitflow-style repos, fill it from pr-review's branch_policy.py, for example:

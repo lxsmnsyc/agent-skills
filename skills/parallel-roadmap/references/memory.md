@@ -72,11 +72,12 @@ Run one curator pass at each checkpoint (after a wave, or after a few nodes in r
 2. Promotes proposed learnings: to a nested `CLAUDE.md` if lasting, to a new enforcement node if checkable, or nowhere if it only mattered once.
 3. Moves decisions into the repo's decision records.
 4. Resolves contract change requests (see `orchestration.md`).
-5. Updates downstream briefs whose upstream outcome deviated from the plan, before those nodes start.
-6. Deletes or corrects memory that the new outcomes proved wrong. Check that each rule still matches the code it describes.
-7. Appends calibration entries.
-8. Lists nodes whose priority looks wrong after this wave, and inbox items worth a node, for the user to decide.
-9. Writes `reviews/wave-<n>.md`: what landed, what changed in the plan, what it learned, and the current must milestone.
+5. Runs `plan.py <root> refine` and breaks the outline nodes it lists into full briefs, using what this wave's outcomes taught. An outline can become several nodes, or turn out to be unnecessary.
+6. Updates downstream briefs whose upstream outcome deviated from the plan, before those nodes start.
+7. Deletes or corrects memory that the new outcomes proved wrong. Check that each rule still matches the code it describes.
+8. Appends calibration entries.
+9. Lists nodes whose priority looks wrong after this wave, and inbox items worth a node, for the user to decide.
+10. Writes `reviews/wave-<n>.md`: what landed, what changed in the plan, what it learned, and the current must line (the wave by which all must work is placed) and the progress of each milestone.
 
 ## Calibration
 

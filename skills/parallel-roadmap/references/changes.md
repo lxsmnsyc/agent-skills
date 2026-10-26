@@ -26,11 +26,13 @@ Then set the priority. Ask the user one question: "Is the goal incomplete withou
 
 Base the priority on evidence, not on how new the idea is. Security problems seen in the wild, data loss, broken production behavior and blocked users are `must` even when they arrive mid-roadmap, because the goal is not really reached while they stand. Feature ideas without that kind of evidence usually feel more urgent than they are because they are new; most of them are `should`, `could` or `later`.
 
-`plan.py impact` shows how a new `must` moves the must milestone. Tell the user that cost.
+`plan.py impact` shows how a new `must` moves the must line. Tell the user that cost.
 
 ## 3. Write the node
 
 Use the brief template and the sizing rubric, the same as during planning. Set `added: <date>`. Run the blindspot checklist on this node only.
+
+An idea for far-off work can go in as an `outline: true` node with a milestone: it is then on the roadmap and in the forecast without a full brief yet, and gets refined when it comes within the horizon.
 
 Small additions still get a brief. The brief is what lets the node run in parallel without the user explaining it again to a worker.
 
@@ -54,7 +56,7 @@ Read it like this:
 - **Overlaps an active node**: do not start it yet. Either narrow its owned paths so they no longer overlap, or make it depend on the active node (`hard`, with a `why`).
 - **Needs a draft contract**: it waits for that contract, like every other consumer.
 - **Needs a frozen contract to change**: write a change request (see `orchestration.md`). Do not edit the frozen contract.
-- **Lengthens the critical path or moves the must milestone**: tell the user the cost ("this pushes the must work from wave 3 to wave 4"), and look for a split that keeps it off the path, or a lower priority.
+- **Lengthens the critical path or moves the must line**: tell the user the cost ("this pushes the must work from wave 3 to wave 4"), and look for a split that keeps it off the path, or a lower priority.
 - **Low priority but needed by a must node**: the script promotes it. Decide whether the dependency is real.
 
 ## 5. Never disturb active nodes

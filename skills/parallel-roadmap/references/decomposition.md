@@ -82,7 +82,7 @@ How to set it:
 1. Start from the goal, not from the node. List what the goal needs; those nodes and everything they need are `must`.
 2. Everything else starts as `should` and has to argue its way up.
 3. Look at value against size. High value and S or M: keep the priority. Low value and L: lower it, or split off the valuable part.
-4. Propose the priorities, then show the user the `must` list and the must milestone ("all must work placed by wave N"). The user decides, because value depends on things the code does not show: users, deadlines, other projects.
+4. Propose the priorities, then show the user the `must` list and the must line ("all must work placed by wave N"). The user decides, because value depends on things the code does not show: users, deadlines, other projects.
 
 What the script does with it:
 

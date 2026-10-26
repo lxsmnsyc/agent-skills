@@ -192,6 +192,29 @@ class PlanTest(unittest.TestCase):
         self.assertEqual(errors, [])
         self.assertEqual(plan.ready(nodes, contracts), ["b"])
 
+    def test_outline_nodes_are_not_ready_and_skip_shape_checks(self):
+        node(self.root, "near", size="M", owns="[src/a/**]")
+        node(self.root, "far", size="XL", outline="true", depends_on=dep("near", "hard", why="x"))
+        nodes, contracts, (errors, warnings) = self.load()
+        self.assertEqual(errors, [])
+        self.assertEqual(warnings, [])  # no "split XL" or "no owned paths" for an outline
+        self.assertEqual(plan.ready(nodes, contracts), ["near"])
+        self.assertEqual(plan.refine_due(nodes, contracts, horizon=2), ["far"])
+        self.assertEqual(plan.refine_due(nodes, contracts, horizon=1), [])
+
+    def test_milestone_groups(self):
+        (self.root / "GOAL.md").write_text("---\nmilestones: [q1, q2]\n---\n# Goal\n")
+        node(self.root, "a", size="M", owns="[a/**]", milestone="q1")
+        node(self.root, "b", size="M", owns="[b/**]", milestone="q2", outline="true",
+             depends_on=dep("a", "hard", why="x"))
+        node(self.root, "c", size="M", owns="[c/**]", milestone="q3")
+        nodes, contracts, errs = plan.load(self.root)
+        _, warnings = plan.check(nodes, contracts, errs, milestones=plan.goal_milestones(self.root))
+        self.assertTrue(any("milestone 'q3' is not in GOAL.md" in w for w in warnings))
+        groups = plan.schedule(nodes, contracts, 4)["groups"]
+        self.assertEqual(groups["q1"]["last_wave"], 1)
+        self.assertEqual(groups["q2"], {"open": 1, "outline": 1, "done": 0, "last_wave": 2})
+
     def test_large_plan_of_sized_nodes_does_not_warn(self):
         for i in range(30):
             node(self.root, f"n{i}", size="M", owns=f"[src/n{i}/**]")
