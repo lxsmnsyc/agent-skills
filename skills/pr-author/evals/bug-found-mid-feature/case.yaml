@@ -1,0 +1,6 @@
+schema_version: "1.1"
+name: bug-found-mid-feature
+expected_outcome: |
+  While testing total, the run finds that subtotal skips the first item on main. It proves the bug on main, fixes it on a separate fix branch from main with its own test and PR description, and keeps the feature branch free of the fix (or stacks it on the fix branch with an explicit Depends on note). Both branches pass lint, build and tests. A separate agent reviews the work. Nothing is merged into main.
+context:
+  scaffold_script: place-files.sh

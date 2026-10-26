@@ -5,6 +5,7 @@ Skills for Claude Code and other agents that support the Agent Skills format.
 ## Skills
 
 - [`parallel-roadmap`](skills/parallel-roadmap/SKILL.md): plan and run a roadmap as a dependency graph, so several agents can work at the same time without blocking each other.
+- [`pr-author`](skills/pr-author/SKILL.md): write changes as small pull requests that merge on their own. Works in worktrees when the machine has room, splits bugs found on the base into their own fix PRs, self-reviews with pr-review, and asks before a push would start billed CI.
 - [`pr-review`](skills/pr-review/SKILL.md): review a pull request or branch with evidence. Fixes are reproduced on the base and proven on the head, features are checked against the roadmap, checks run locally, and approval goes to the maintainer.
 - [`plain-writing`](skills/plain-writing/SKILL.md): rules for short, exact prose that people and agents can both scan, with a checker script and an optional hook for commits and PRs.
 
@@ -37,6 +38,14 @@ Linear roadmaps make every item wait for the one above it. Most of those waits a
 ```
 python3 skills/parallel-roadmap/scripts/plan.py docs/roadmaps/<slug> status
 ```
+
+## pr-author
+
+- `scripts/capacity.py` recommends how many worktrees the machine can take, from free memory, CPU load and disk.
+- `scripts/wt.py` keeps one worktree per branch in `.worktrees/`, hidden from `git status`, and prunes merged ones.
+- `scripts/ci_guard.py` reads workflow triggers and repo visibility, and says "ask" when a push to a private repo would start CI.
+- Bugs found on the base branch are proven there and fixed in their own PR, so they ship without waiting for the feature.
+- A fresh agent reviews each branch with pr-review, for at most two rounds, before the PR goes to the maintainer.
 
 ## pr-review
 
