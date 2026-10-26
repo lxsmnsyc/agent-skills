@@ -20,6 +20,7 @@ Ask yourself what the user needs right now, then go to that phase. Do not run al
 | add a feature or change scope while work is running | Change (below) |
 | know where things stand | run `plan.py <root> status` and summarize |
 | close out a roadmap | 8. Close |
+| bring a roadmap made with an older version of this skill up to date | Upgrade (below) |
 
 ## Files
 
@@ -185,6 +186,21 @@ New ideas arrive while waves are running. That is normal, and the graph makes it
 3. **Check the impact.** Run `plan.py <root> impact <id>`. It shows whether the node can start now, which nodes it overlaps (including running ones), which contracts it uses, and how it changes the critical path and the number of waves.
 4. **Fit it in without disturbing running work.** Never edit the brief of an active node. If the new work changes what an active node is building, let that node finish against its brief and add a follow-up node with a `hard` dependency on it. If the new work needs a contract to change, write a change request; do not edit a frozen contract.
 5. **Start it.** If `impact` says it can start now and nothing active overlaps, spawn it right away instead of waiting for the wave to end.
+
+## Upgrade a roadmap made with an older version
+
+Every field added since the first version is optional, so an old roadmap still loads. Upgrading is a short pass that changes no work, only how the plan is described. Do it in this order, and show the user the proposals in steps 3 and 4 before writing them, because they change how the plan reads:
+
+1. Run `plan.py <root> status` with the current script and note the new warnings (hot files, merge orders for shared files). Fix errors first; warnings can wait for the user.
+2. Give `GOAL.md` a frontmatter block if it has none. Keep its body as it is.
+3. **Milestones.** Propose a `milestones:` list (releases, quarters, or whatever stages the user talks about) and a `milestone:` for each open node. Done nodes can stay untagged.
+4. **Outlines.** Propose `outline: true` for todo nodes that will not start within the next two or three waves and whose briefs are mostly guesswork. Keep their text as notes; it is rewritten when `plan.py refine` lists them. Leave active, done and near nodes alone.
+5. **Branches.** If the repo has more than one integration branch (pr-review's `branch_policy.py` tells), add the `branches:` map to `GOAL.md` and a `type:` to each open node.
+6. **Coverage.** If the roadmap was imported from existing documents, add the "Coverage" section to `GOAL.md` and map every source step.
+7. Where they help, add `verify:` commands, `exclusive:` tags for single-use resources, and `fulfilled_by:` on nodes that turn out to be done already (`plan.py verify` finds candidates).
+8. Run `plan.py <root> status` again, and report the milestones, the must line and the "refine now" list.
+
+Never change `status` fields or the briefs of active nodes during an upgrade.
 
 ## 8. Close
 
