@@ -70,6 +70,34 @@ def option_values(args, names, file_names=()):
     return out
 
 
+WRAPPERS = {"rtk", "command", "env", "time", "nice"}
+
+
+def strip_wrappers(seg):
+    """Drop leading wrappers such as `rtk`, `rtk proxy`, `env`, and VAR=value assignments."""
+    i = 0
+    while i < len(seg):
+        t = seg[i]
+        if t in WRAPPERS or re.match(r"^[A-Za-z_][A-Za-z0-9_]*=", t):
+            i += 1
+            if t == "rtk" and i < len(seg) and seg[i] == "proxy":
+                i += 1
+            continue
+        break
+    return seg[i:]
+
+
+def git_subcommand(seg):
+    """Index of the git subcommand in a segment that runs git, skipping global options."""
+    if not seg or seg[0] != "git":
+        return None
+    i = 1
+    while i < len(seg) and seg[i].startswith("-"):
+        # Global options that take a separate value.
+        i += 2 if seg[i] in ("-C", "-c", "--git-dir", "--work-tree", "--namespace") else 1
+    return i if i < len(seg) else None
+
+
 def texts_from_command(command):
     try:
         tokens = shlex.split(command, posix=True)
@@ -77,9 +105,13 @@ def texts_from_command(command):
         return []
     found = []
     for seg in segments(tokens):
+        # Only the command a segment runs counts: words inside a heredoc or a
+        # quoted script are arguments, not commands.
+        seg = strip_wrappers(seg)
         words = [w for w in seg if not w.startswith("-")]
-        if "git" in seg and "commit" in seg:
-            rest = seg[seg.index("commit") + 1:]
+        sub = git_subcommand(seg)
+        if sub is not None and seg[sub] == "commit":
+            rest = seg[sub + 1:]
             msgs = option_values(rest, ["-m", "--message"], ["-F", "--file"])
             if msgs:
                 found.append(("commit message", "\n\n".join(v for _, v in msgs), True))
