@@ -142,6 +142,19 @@ class PlanTest(unittest.TestCase):
         self.assertEqual(len(s["waves"]), 1)
         self.assertEqual(s["shared"][0], [("src/core.ts", ["a", "b"])])
 
+    def test_merge_order_follows_priority(self):
+        node(self.root, "low", size="M", owns="[src/l/**]", shared="[src/core.ts]", priority="could")
+        node(self.root, "high", size="M", owns="[src/h/**]", shared="[src/core.ts]", priority="must")
+        nodes, contracts, _ = self.load()
+        s = plan.schedule(nodes, contracts, 4)
+        self.assertEqual(s["shared"][0][0], ("src/core.ts", ["high", "low"]))
+
+    def test_hot_file_warns(self):
+        for i in range(plan.HOT_FILE_NODES):
+            node(self.root, f"n{i}", size="M", owns=f"[src/n{i}/**]", shared="[src/zone.go]")
+        _, _, (_, warnings) = self.load()
+        self.assertTrue(any("src/zone.go is edited by 4 open nodes" in w for w in warnings))
+
     def goal_with_branches(self):
         (self.root / "GOAL.md").write_text(
             "---\nbranches:\n  feature: dev\n  fix: dev\n  hotfix: main\n"

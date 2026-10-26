@@ -101,7 +101,7 @@ These are where parallel branches collide. Handle them in the plan, not at merge
 
 ### Split hot files by feature first
 
-When two or more nodes would edit the same large file, the best fix is usually to split that file before the fan-out, so each later node owns its own module. Add one early node that:
+When two or more nodes would edit the same large file, the best fix is usually to split that file before the fan-out, so each later node owns its own module. `plan.py check` warns when four or more open nodes touch one file, and `plan.py status` prints the merge order for files shared within a wave. Add one early node that:
 
 - Moves code into one module per feature (one file per job, per monster, per route, per event kind), and leaves the old file importing or re-exporting them so callers do not change.
 - Changes no behavior. The existing tests pass unchanged. Nothing else goes into this pull request, so the review is a quick check that code only moved.

@@ -19,6 +19,7 @@ For each category, either point to the node that covers it or write "N/A" with a
 - **Developer experience**: error messages, docs, types, examples, generated reference docs.
 - **Rollout**: feature flags, staged release, how to turn it off.
 - **Cleanup**: stubs left behind, old code paths to remove, temporary flags.
+- **Coverage** (imported plans): every step of the source documents maps to a node, an inbox entry, already built work, or an explicit drop, in `GOAL.md` under "Coverage".
 - **Dependencies**: new libraries, licenses, versions, maintenance status.
 
 ## Premortem

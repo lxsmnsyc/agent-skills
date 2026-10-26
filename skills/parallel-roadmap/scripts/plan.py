@@ -300,6 +300,21 @@ def wave_conflict(x, y):
     return owns_conflict(x, y)
 
 
+# Three nodes appending to one config file is normal; four or more on one file is a hot spot.
+HOT_FILE_NODES = 4
+
+
+def hot_files(planned):
+    """Single files (not globs) that HOT_FILE_NODES or more open nodes own or share."""
+    out = {}
+    entries = {(p, n["id"]) for n in planned for p in n["owns"] + n["shared"]}
+    for path in sorted({p for p, _ in entries if not _glob_prefix(p)[1]}):
+        ids = sorted({nid for q, nid in entries if paths_overlap(path, q)})
+        if len(ids) >= HOT_FILE_NODES:
+            out[path] = ids
+    return out
+
+
 def shared_in_wave(wave, lv):
     """Shared files that two or more nodes of one wave edit. They may run together,
     but their pull requests touch the same file, so plan the merge order."""
@@ -312,7 +327,8 @@ def shared_in_wave(wave, lv):
         for p in lv[k]["shared"]:
             others = {o for q, us in users.items() if paths_overlap(p, q) for o in us} - {k}
             if others:
-                notes.append((p, sorted(others | {k})))
+                # Wave order is priority, then critical path: also the order to merge in.
+                notes.append((p, [w for w in wave if w in others | {k}]))
     seen, out = set(), []
     for p, ks in notes:
         key = (p, tuple(ks))
@@ -459,6 +475,11 @@ def check(nodes, contracts, load_errors, policy=None):
                 warnings.append(f"node {k}: {n['status']} but its start dependencies are not done: "
                                 + ", ".join(waiting))
         planned = [n for n in lv.values() if n["status"] not in DONE]
+        for path, ids in hot_files(planned).items():
+            warnings.append(
+                f"{path} is edited by {len(ids)} open nodes ({', '.join(ids)}); split it by "
+                "feature in an early, behavior-preserving node so each owns its own module "
+                "(decomposition.md, 'Split hot files by feature first'), or say why not")
         if len(planned) > MAX_NODES:
             warnings.append(
                 f"plan has {len(planned)} open nodes; above {MAX_NODES} the plan is usually cut too "
@@ -691,8 +712,8 @@ def print_schedule(s, nodes):
         for k, other, why in s["deferred"][i - 1]:
             print(f"  (deferred {k}: conflicts with {other}: {why})")
         for path, ks in s["shared"][i - 1]:
-            print(f"  (shared {path}: edited by {', '.join(ks)}; split it by feature in an "
-                  "earlier node, or plan the merge order)")
+            print(f"  (shared {path}: edited by {', '.join(ks)}; merge in this order, "
+                  "or split the file by feature in an earlier node)")
     for pri, wave in s["milestones"].items():
         print(f"all {pri} work placed by wave {wave}")
     if s["parked"]:

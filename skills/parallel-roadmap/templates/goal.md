@@ -46,6 +46,12 @@ branches:
 
 - <Links to the proposals, ADRs or documents this roadmap was built from.>
 
+## Coverage
+
+Only for roadmaps imported from existing documents. One line per source step:
+
+- <source step, e.g. "ADR 0057 step 4"> -> <node id | inbox: reason | built: commit or PR | dropped: reason>
+
 ## Open questions
 
 - <Questions still waiting on the user, with the nodes they block.>

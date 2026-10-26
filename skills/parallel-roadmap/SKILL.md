@@ -84,6 +84,8 @@ Before you plan, learn how the repo already plans. Look for:
 
 When importing a prose plan, keep a link from each node back to the paragraph it came from. Do not rewrite the source documents.
 
+Account for every step of the source. Each step or item in the documents you import maps to exactly one of: a node, an inbox entry (parked for later, with the reason), already built (`fulfilled_by`), or dropped (with the reason). Write that mapping in `GOAL.md` under "Coverage". A step that silently disappears is the most common import mistake, and the user cannot see it from the plan alone.
+
 Check each imported item against the code before writing its node. Planning documents go stale, and items listed as pending are often already built. Spend a minute per item: grep for the names it introduces, look for its tests, search `git log`. Already built items become `done` nodes with `fulfilled_by:` set, or are left out with a note in `GOAL.md`. Partly built items get a brief for the remainder only.
 
 ## 1. Discover
