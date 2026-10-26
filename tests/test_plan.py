@@ -230,6 +230,46 @@ class PlanTest(unittest.TestCase):
         self.assertIn("- [ ] **a**: API [must, M, wave 1]", text)
         self.assertIn("**b**: Offline [should, L, outline, wave 2] (after a)", text)
 
+    def merge_setup(self, mode="auto"):
+        (self.root / "GOAL.md").write_text(f"---\nmerge:\n  mode: {mode}\n  max_size: M\n---\n# G\n")
+        node(self.root, "f", size="M", status="active", type="feature", owns="[src/f/**]")
+        node(self.root, "x", size="M", status="active", type="fix", owns="[src/x/**]")
+        node(self.root, "big", size="L", status="active", type="feature", owns="[src/b/**]")
+        node(self.root, "g", size="S", status="active", gate="true", owns="[src/g/**]")
+        nodes, _, _ = plan.load(self.root)
+        return nodes, plan.merge_policy(self.root)
+
+    def test_can_merge_clean_feature(self):
+        nodes, pol = self.merge_setup()
+        r = plan.can_merge("f", nodes, pol, True, True, False,
+                           ["src/f/a.ts", "docs/roadmaps/r/nodes/f/outcome.md"])
+        self.assertEqual(r["verdict"], "auto", r["reasons"])
+
+    def test_can_merge_refuses(self):
+        nodes, pol = self.merge_setup()
+        cases = {
+            "x": (True, True, False, ["src/x/a.ts"], "proof"),
+            "big": (True, True, False, ["src/b/a.ts"], "above the limit"),
+            "g": (True, True, False, ["src/g/a.ts"], "gated"),
+            "f": (False, True, False, ["src/f/a.ts"], "review is not clean"),
+        }
+        for nid, (clean, checks, proof, files, why) in cases.items():
+            r = plan.can_merge(nid, nodes, pol, clean, checks, proof, files)
+            self.assertEqual(r["verdict"], "maintainer", nid)
+            self.assertTrue(any(why in reason for reason in r["reasons"]), (nid, r["reasons"]))
+        r = plan.can_merge("f", nodes, pol, True, True, False, ["src/other.ts"])
+        self.assertTrue(any("outside the node's paths" in x for x in r["reasons"]))
+        r = plan.can_merge("f", nodes, pol, True, True, False, ["src/f/a.ts"], ci_guard="ask")
+        self.assertEqual(r["verdict"], "maintainer")
+
+    def test_merge_mode_defaults_to_maintainer(self):
+        nodes, pol = self.merge_setup(mode="maintainer")
+        self.assertEqual(plan.merge_policy(self.root)["mode"], "maintainer")
+        r = plan.can_merge("f", nodes, pol, True, True, False, ["src/f/a.ts"])
+        self.assertEqual(r["verdict"], "maintainer")
+        (self.root / "GOAL.md").write_text("# G\n")
+        self.assertEqual(plan.merge_policy(self.root)["mode"], "maintainer")
+
     def test_large_plan_of_sized_nodes_does_not_warn(self):
         for i in range(30):
             node(self.root, f"n{i}", size="M", owns=f"[src/n{i}/**]")

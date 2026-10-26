@@ -105,7 +105,7 @@ Reviews are non-blocking: post with `gh pr review <n> --comment --body-file <fil
 
 Before posting anything to GitHub, show the user the review text and ask, unless the user already said to post (for example "review and post", or a standing instruction). Posting is visible to others and cannot be fully undone.
 
-The approval goes to the maintainer that `pr_info.py` reports:
+A roadmap with an `auto` merge policy lets the orchestrator merge clean PRs without the maintainer; the reviewer's verdict is one of its inputs (`--review-clean` means no blocking and no should-fix findings). The reviewer still never approves. Otherwise, the approval goes to the maintainer that `pr_info.py` reports:
 
 - **The maintainer is the user in this session**: give them the evidence summary and the exact command to approve (`gh pr review <n> --approve`), and let them run it or tell you to.
 - **The maintainer is someone else**: post a short comment review that says the PR is ready for maintainer approval, with the evidence summary, and mention the maintainer's login so they are notified.

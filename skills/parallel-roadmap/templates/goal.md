@@ -1,5 +1,12 @@
 ---
 milestones: []          # optional, in order, e.g. [0.4, 0.5, 1.0] or [2026-q4, 2027-q1]
+merge:
+  # Who merges node pull requests. maintainer (the default): every PR waits for the user.
+  # auto: the orchestrator merges PRs that pass `plan.py can-merge`; the rest still wait.
+  mode: maintainer
+  # method: squash
+  # max_size: M
+  # exclude: [release, hotfix, contract, gate]
 branches:
   # Leave this empty when every pull request targets one branch.
   # For gitflow-style repos, fill it from pr-review's branch_policy.py, for example:

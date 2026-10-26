@@ -96,10 +96,42 @@ For each finished worker (closing a node also means ticking its acceptance boxes
 2. Check that the diff stays inside its owned paths and its node folder. Changes outside owned paths are the main source of merge conflicts and hidden coupling. Either accept them and note them in the outcome, or send the worker back.
 3. Run the review. Spawn a fresh-context reviewer (the pr-review skill) on the pull request. Fix what it finds, for at most two rounds.
 4. Run the checks required by the repo: lint, typecheck, build, tests. On a private repo, run them locally and do not trigger CI.
-5. Hand the pull request to the maintainer for approval. Do not approve or merge it yourself unless the user said to.
+5. Decide who merges (see "Auto-merge" below). Without an `auto` merge policy, hand the pull request to the maintainer. Never approve it yourself.
 6. If a merged pull request breaks the main branch, revert it and reopen the node with the failure in its log.
 
 Merge conflicts still happen. Resolve them in the worker's branch, by the worker or the orchestrator, then rerun the checks.
+
+## Auto-merge
+
+By default every pull request waits for the maintainer. A roadmap can opt in to merging some of them without the user, in `GOAL.md`:
+
+```yaml
+merge:
+  mode: auto                                   # maintainer is the default
+  method: squash
+  max_size: M                                  # larger nodes go to the maintainer
+  exclude: [release, hotfix, contract, gate]   # always go to the maintainer
+```
+
+Only switch to `auto` when the user asks for it. Merging is visible to everyone on the repo.
+
+With `mode: auto`, the decision is the script's, not yours:
+
+```bash
+git diff --name-only <base>...<branch> | \
+  python3 <skill>/scripts/plan.py <root> can-merge <id> --review-clean --checks-pass [--proof] \
+    [--ci-guard ask] --files -
+```
+
+Pass `--review-clean` only when the pr-review verdict had no blocking and no should-fix findings, `--checks-pass` only when lint, typecheck, build and tests passed on the branch rebased onto the current base, `--proof` only when a fix fails on the base and passes on the branch, and `--ci-guard ask` when pr-author's `ci_guard.py` says a merge would start billed CI. Exit code 0 (`auto`) means:
+
+1. Merge: `gh pr merge <n> --squash --delete-branch` (or the policy's method).
+2. Run the checks on the updated base. If they fail, revert the merge in a new pull request at once, merge that revert (restoring a green base is always allowed), set the node back to `todo` with the failure in its log, and tell the user.
+3. Set the node to `done`.
+
+Exit code 1 (`maintainer`) lists the reasons; hand the pull request to the maintainer with them. If branch protection on the base requires approvals, auto-merge cannot work; say so and keep the maintainer mode.
+
+At every checkpoint, report what merged on its own, with links, so the user sees it without asking.
 
 ## Shared and exclusive resources
 

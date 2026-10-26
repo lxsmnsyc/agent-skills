@@ -13,10 +13,13 @@ Usage:
   plan.py <root> verify [<id>]     # run the verify command of <id>, or of every todo node
   plan.py <root> refine            # outline nodes close enough to break into briefs now
   plan.py <root> overview          # readable summary of the plan, grouped by milestone
+  plan.py <root> can-merge <id> --review-clean --checks-pass [--proof] --files - < changed.txt
+                                   # may the orchestrator merge this node's PR itself? exit 0 = yes
 Options: --json, --max-parallel N (default 4), --budget TOKENS (default 20000),
          --upto must|should|could|later (default could: schedule everything except parked work)
 """
 import argparse
+import fnmatch
 import json
 import os
 import re
@@ -188,6 +191,17 @@ def load(root):
 # ---------------------------------------------------------------------------
 # Graph
 # ---------------------------------------------------------------------------
+
+def goal_settings(root):
+    """Frontmatter of GOAL.md, or {}."""
+    goal = root / "GOAL.md"
+    if not goal.exists():
+        return {}
+    try:
+        return parse_frontmatter(goal.read_text(), goal)
+    except ValueError:
+        return {}
+
 
 def goal_milestones(root):
     """Ordered milestone names from the `milestones:` list in GOAL.md frontmatter, or None."""
@@ -757,6 +771,65 @@ def overview(root, nodes, contracts, s, milestones, warnings):
     return "\n".join(out).rstrip() + "\n"
 
 
+SIZE_ORDER = ["S", "M", "L", "XL"]
+MERGE_DEFAULTS = {"mode": "maintainer", "method": "squash", "max_size": "M",
+                  "exclude": ["release", "hotfix", "contract", "gate"]}
+
+
+def merge_policy(root):
+    """The `merge:` map from GOAL.md frontmatter over the defaults (mode maintainer)."""
+    raw = goal_settings(root).get("merge")
+    pol = dict(MERGE_DEFAULTS)
+    if isinstance(raw, dict):
+        pol.update({k: v for k, v in raw.items() if v not in (None, [])})
+    if not isinstance(pol["exclude"], list):
+        pol["exclude"] = [pol["exclude"]]
+    return pol
+
+
+def can_merge(nid, nodes, policy, review_clean, checks_pass, proof, files, ci_guard="safe"):
+    """Decide whether the orchestrator may merge a node's pull request itself.
+
+    Returns {"verdict": "auto" | "maintainer", "reasons": [...]}. Every reason is a
+    condition that failed; an empty list with mode auto means the merge may go ahead.
+    """
+    n = nodes[nid]
+    reasons = []
+    if policy.get("mode") != "auto":
+        reasons.append("merge mode is maintainer")
+    excluded = set(policy.get("exclude") or [])
+    if n["type"] and n["type"] in excluded:
+        reasons.append(f"type {n['type']} is excluded")
+    if "gate" in excluded and n["gate"]:
+        reasons.append("the node is gated")
+    if "contract" in excluded and n["provides"]:
+        reasons.append("the node provides a contract: " + ", ".join(n["provides"]))
+    if "spike" in excluded and n["spike"]:
+        reasons.append("the node is a spike")
+    limit = str(policy.get("max_size") or "M")
+    if n["size"] in SIZE_ORDER and limit in SIZE_ORDER and \
+            SIZE_ORDER.index(n["size"]) > SIZE_ORDER.index(limit):
+        reasons.append(f"size {n['size']} is above the limit {limit}")
+    if n["status"] != "active":
+        reasons.append(f"status is {n['status']}, not active")
+    if not review_clean:
+        reasons.append("the review is not clean (blocking or should-fix findings)")
+    if not checks_pass:
+        reasons.append("the checks did not pass")
+    if (n["type"] in ("fix", "hotfix")) and not proof:
+        reasons.append("a fix needs proof: fails on base, passes on head")
+    if ci_guard != "safe":
+        reasons.append("merging would start billed CI on a private repo (ci_guard says ask)")
+    allowed = n["owns"] + n["shared"]
+    outside = [f for f in files
+               if not fnmatch.fnmatch(f, f"*nodes/{nid}/*")
+               and not any(fnmatch.fnmatch(f, g) or paths_overlap(f, g) for g in allowed)]
+    if outside:
+        reasons.append("changes outside the node's paths: " + ", ".join(outside[:5]))
+    return {"node": nid, "verdict": "maintainer" if reasons else "auto", "reasons": reasons,
+            "method": policy.get("method", "squash")}
+
+
 def rel(path):
     return os.path.relpath(path)
 
@@ -861,12 +934,17 @@ def main():
     ap.add_argument("root", type=Path)
     ap.add_argument("command", nargs="?", default="status",
                     choices=["status", "check", "waves", "ready", "context", "impact", "verify", "refine",
-                             "overview"])
+                             "overview", "can-merge"])
     ap.add_argument("node", nargs="?")
     ap.add_argument("--json", action="store_true")
     ap.add_argument("--max-parallel", type=int, default=4)
     ap.add_argument("--budget", type=int, default=20000)
     ap.add_argument("--upto", choices=list(PRIORITIES), default="could")
+    ap.add_argument("--review-clean", action="store_true", help="can-merge: the review had no blocking or should-fix findings")
+    ap.add_argument("--checks-pass", action="store_true", help="can-merge: lint, typecheck, build and tests passed")
+    ap.add_argument("--proof", action="store_true", help="can-merge: the fix fails on base and passes on head")
+    ap.add_argument("--files", default="", help="can-merge: changed files, comma separated, or '-' to read lines from stdin")
+    ap.add_argument("--ci-guard", default="safe", choices=["safe", "ask"], help="can-merge: the verdict of pr-author's ci_guard.py")
     ap.add_argument("--horizon", type=int, default=DEFAULT_HORIZON,
                     help="waves ahead within which outline nodes are due for refinement")
     ap.add_argument("--cwd", default=".", help="directory to run verify commands in (repo root)")
@@ -907,6 +985,21 @@ def main():
             if total > args.budget:
                 print("over budget: split this node or tighten its dependencies' outcomes")
         return
+
+    if args.command == "can-merge":
+        if args.node not in nodes:
+            sys.exit(f"unknown node '{args.node}'")
+        files = (sys.stdin.read().split() if args.files == "-" else
+                 [f for f in args.files.split(",") if f])
+        r = can_merge(args.node, nodes, merge_policy(args.root), args.review_clean,
+                      args.checks_pass, args.proof, files, args.ci_guard)
+        if args.json:
+            print(json.dumps(r, indent=2))
+        else:
+            print(f"{args.node}: {r['verdict']}" + ("" if r["verdict"] == "auto" else ":"))
+            for reason in r["reasons"]:
+                print(f"  - {reason}")
+        sys.exit(0 if r["verdict"] == "auto" else 1)
 
     if args.command == "refine":
         due = refine_due(nodes, contracts, args.horizon, args.max_parallel)

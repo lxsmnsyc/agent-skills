@@ -100,7 +100,7 @@ Run at most two review rounds. If blocking findings remain after the second, sto
 2. Rebase onto the latest base, and rerun the checks if the base moved.
 3. Write the description from `references/pr-body.md`: what and why, changes, proof (the failing test on the base and passing on the branch, for fixes), roadmap node, cost, risk, and anything not done.
 4. `git push -u origin <branch>` and `gh pr create --base <base> --body-file <file>`. Do not merge it.
-5. Hand it to the maintainer as pr-review describes: if the user is the maintainer, give them the link, the evidence and `gh pr review <n> --approve`. Otherwise post a short comment that it is ready for maintainer approval and mention them.
+5. If the PR is a roadmap node and the roadmap's merge policy is `auto`, the orchestrator decides with `plan.py can-merge` and may merge it without the user (parallel-roadmap, "Auto-merge"). Otherwise, hand it to the maintainer as pr-review describes: if the user is the maintainer, give them the link, the evidence and `gh pr review <n> --approve`. Otherwise post a short comment that it is ready for maintainer approval and mention them.
 
 Write all PR text by the plain-writing rules if that skill is installed.
 

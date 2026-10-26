@@ -57,6 +57,7 @@ python3 <skill>/scripts/plan.py <root> impact <id>     # what adding <id> does: 
 python3 <skill>/scripts/plan.py <root> verify [<id>]   # run verify commands; finds todo nodes that are already fulfilled
 python3 <skill>/scripts/plan.py <root> refine          # outline nodes close enough to break into full briefs now
 python3 <skill>/scripts/plan.py <root> overview        # readable summary for the user, grouped by milestone
+python3 <skill>/scripts/plan.py <root> can-merge <id> ...  # may the orchestrator merge this PR without the user?
 ```
 
 Options: `--max-parallel N` (default 4), `--budget TOKENS` (default 20000), `--upto must|should|could|later`, `--cwd DIR` (where verify commands run, the repo root).
@@ -160,7 +161,7 @@ Read `references/orchestration.md` before this step. In short:
 1. `plan.py <root> refine` lists outline nodes that are about to be needed; break them into briefs first. `plan.py <root> verify` closes todo nodes whose acceptance already holds. Then `plan.py <root> ready --json` lists the nodes to start.
 2. Set each one to `status: active` and commit that. The orchestrator is the only writer of `status`.
 3. Spawn one agent per node with `isolation: worktree`, using `templates/worker-prompt.md` and the model the script suggests. Spawn them in one message so they run at the same time. Each worker first checks whether its work already exists, then builds and opens one pull request against the node's target branch (`target` in `ready --json`, or the main branch when there is no branch policy).
-4. Each pull request gets a fresh-context review (the pr-review skill), passes the repo's checks, and goes to the maintainer for approval. Agents do not approve their own work. A node is `done` when its pull request merges. Run the curator (phase 7) at checkpoints.
+4. Each pull request gets a fresh-context review (the pr-review skill) and passes the repo's checks. Then it goes to the maintainer, unless the roadmap's `merge:` policy in `GOAL.md` is `auto` and `plan.py <root> can-merge` allows it, in which case the orchestrator merges it (see "Auto-merge" in `references/orchestration.md`). Agents never approve their own work. A node is `done` when its pull request merges. Run the curator (phase 7) at checkpoints.
 5. Stop at gates. Then go back to step 1.
 
 One pull request per node is the default, because every piece of work then merges on its own and nothing waits for a large integration branch. Use a single integration branch only when the user asks for it.
