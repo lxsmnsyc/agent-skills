@@ -36,6 +36,7 @@ A roadmap lives in the repo, so it is versioned with the code and survives devic
   nodes/<id>/log.md           # worker's private notes, never read by other nodes
   nodes/<id>/outcome.md       # worker's distilled result, the only thing that flows downstream
   reviews/                    # premortem, adversarial review, wave reports
+  archive.md                  # one line per done node whose folder was removed (plan.py archive)
 ```
 
 Templates for each file are in `templates/`. Copy them; do not invent new fields, because `scripts/plan.py` reads the frontmatter.
@@ -58,6 +59,7 @@ python3 <skill>/scripts/plan.py <root> verify [<id>]   # run verify commands; fi
 python3 <skill>/scripts/plan.py <root> refine          # outline nodes close enough to break into full briefs now
 python3 <skill>/scripts/plan.py <root> overview        # readable summary for the user, grouped by milestone
 python3 <skill>/scripts/plan.py <root> can-merge <id> ...  # may the orchestrator merge this PR without the user?
+python3 <skill>/scripts/plan.py <root> archive [--apply]   # remove done nodes nothing open still needs
 ```
 
 Options: `--max-parallel N` (default 4), `--budget TOKENS` (default 20000), `--upto must|should|could|later`, `--cwd DIR` (where verify commands run, the repo root).

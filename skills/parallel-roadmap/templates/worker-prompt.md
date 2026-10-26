@@ -6,6 +6,7 @@ Start by reading these files, in this order. They are all the context you need; 
 
 Then:
 
+0. Name your branch. If your worktree is on a generated branch (such as `worktree-agent-...`), rename it before committing: `git branch -m <branch>`, where `<branch>` comes from `ready --json` (for example `feat/frame-writer`). Use `<pr_title>` from the same output as the pull request title, following the repo's own title convention if it differs.
 1. Check first whether the work already exists. Run the brief's `verify` command if it has one, and look at the code its acceptance criteria describe. If every criterion already holds, make no code changes: write `outcome.md` with "Already fulfilled" under Built, the evidence (commands and results, and the commit, PR or node that did it), and stop. If some criteria hold, do only the rest and say so in the outcome.
 2. If `nodes/<id>/log.md` exists, you are resuming. Continue from where it stops.
 3. Do the work described in the brief. Edit only the brief's owned paths and `nodes/<id>/`. If you must touch another file, keep the change minimal and record it under Deviations in your outcome.
@@ -18,4 +19,4 @@ Then:
 10. Do not change `status` in your brief. Commit everything on your branch with the message `<id>: <title>`.
 11. Open a pull request against `<target>` (the node's target branch from `ready --json`, or the main branch) following the pr-author skill if it is installed, otherwise with `gh pr create`. The description links the node (`<root>/nodes/<id>/brief.md`). Do not merge it.
 
-Reply with: your branch name, the PR number, whether the acceptance criteria pass (or "already fulfilled"), and anything the orchestrator must decide (change requests, blockers, deviations).
+Reply with: your branch name (the descriptive one, not a generated name), the PR number, whether the acceptance criteria pass (or "already fulfilled"), and anything the orchestrator must decide (change requests, blockers, deviations).

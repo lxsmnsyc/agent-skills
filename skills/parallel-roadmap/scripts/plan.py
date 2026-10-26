@@ -13,6 +13,7 @@ Usage:
   plan.py <root> verify [<id>]     # run the verify command of <id>, or of every todo node
   plan.py <root> refine            # outline nodes close enough to break into briefs now
   plan.py <root> overview          # readable summary of the plan, grouped by milestone
+  plan.py <root> archive [--apply]   # done nodes nothing open needs: remove folders, list in archive.md
   plan.py <root> can-merge <id> --review-clean --checks-pass [--proof] --files - < changed.txt
                                    # may the orchestrator merge this node's PR itself? exit 0 = yes
 Options: --json, --max-parallel N (default 4), --budget TOKENS (default 20000),
@@ -21,6 +22,7 @@ Options: --json, --max-parallel N (default 4), --budget TOKENS (default 20000),
 import argparse
 import fnmatch
 import json
+import shutil
 import os
 import re
 import subprocess
@@ -134,6 +136,35 @@ def _command(v):
     return str(v)
 
 
+ARCHIVE_LINE = re.compile(
+    r"^- (?P<id>[\w.-]+): (?P<title>.*?) \((?P<status>done|released)"
+    r"(?:, (?P<ref>[^,)]+?))?(?:, milestone (?P<milestone>[^)]+))?\)\s*$")
+
+
+def read_archive(root):
+    """Archived nodes from <root>/archive.md: id -> {title, status, ref, milestone}."""
+    f = root / "archive.md"
+    out = {}
+    if f.exists():
+        for line in f.read_text().splitlines():
+            m = ARCHIVE_LINE.match(line)
+            if m:
+                out[m.group("id")] = m.groupdict()
+    return out
+
+
+def archived_node(root, nid, entry):
+    """A done node whose folder was archived: enough for dependencies and milestones."""
+    return {
+        "id": nid, "dir": root / "nodes" / nid, "dirname": nid, "title": entry["title"],
+        "status": entry["status"], "priority": "should", "size": "S", "model": None,
+        "spike": False, "gate": False, "deps": [], "owns": [], "shared": [], "provides": [],
+        "reserves": [], "added": None, "exclusive": [], "verify": None,
+        "fulfilled_by": entry.get("ref"), "type": None, "target": None, "from": None,
+        "outline": False, "milestone": entry.get("milestone"), "archived": True,
+    }
+
+
 def load(root):
     nodes, contracts, errors = {}, {}, []
     for brief in sorted((root / "nodes").glob("*/brief.md")):
@@ -168,7 +199,13 @@ def load(root):
             "from": fm.get("from") or None,
             "outline": bool(fm.get("outline")),
             "milestone": fm.get("milestone") or None,
+            "archived": False,
         }
+    for nid, entry in read_archive(root).items():
+        if nid in nodes:
+            errors.append(f"node {nid}: in archive.md and in nodes/; remove one")
+            continue
+        nodes[nid] = archived_node(root, nid, entry)
     for path in sorted((root / "contracts").glob("*.md")):
         if path.name.endswith(".change-request.md"):
             continue
@@ -440,7 +477,7 @@ def check(nodes, contracts, load_errors, policy=None, milestones=None):
             warnings.append(f"{where}: id differs from directory name '{n['dirname']}'")
         if n["status"] not in STATUSES:
             errors.append(f"{where}: status '{n['status']}' not in {sorted(STATUSES)}")
-        if n["status"] == "dropped":
+        if n["status"] == "dropped" or n["archived"]:
             continue
         if n["priority"] not in PRIORITIES:
             errors.append(f"{where}: priority must be one of must, should, could, later")
@@ -740,6 +777,8 @@ def overview(root, nodes, contracts, s, milestones, warnings):
     def line(k):
         n = lv[k]
         mark = {"done": "x", "released": "x", "active": "~"}.get(n["status"], " ")
+        if n["archived"]:
+            return f"- [x] **{k}**: {n['title']} [archived]"
         bits = [s["priority"].get(k, n["priority"]), n["size"] or "?"]
         if n.get("target_eff"):
             bits.append(f"-> {n['target_eff']}")
@@ -828,6 +867,73 @@ def can_merge(nid, nodes, policy, review_clean, checks_pass, proof, files, ci_gu
         reasons.append("changes outside the node's paths: " + ", ".join(outside[:5]))
     return {"node": nid, "verdict": "maintainer" if reasons else "auto", "reasons": reasons,
             "method": policy.get("method", "squash")}
+
+
+def archive_candidates(nodes, contracts):
+    """Done nodes nothing open still needs, and frozen contracts no open node uses."""
+    lv = live(nodes)
+    needed = set()
+    for k, n in lv.items():
+        if n["status"] in DONE:
+            continue
+        for d in n["deps"]:
+            if isinstance(d, dict) and d.get("on"):
+                needed.add(d["on"])
+        needed |= start_preds(n, lv, contracts)
+    ready_nodes = sorted(k for k, n in lv.items()
+                         if n["status"] in DONE and not n["archived"] and k not in needed)
+    used = set()
+    for n in lv.values():
+        if n["status"] in DONE:
+            continue
+        used.update(n["provides"])
+        used.update(d.get("via") for d in n["deps"] if isinstance(d, dict) and d.get("via"))
+    unused = sorted(c for c, v in contracts.items() if v["status"] == "frozen" and c not in used)
+    return ready_nodes, unused
+
+
+def archive_line(n):
+    """One archive.md line. The reference is fulfilled_by, else the first PR number in the outcome."""
+    ref = n["fulfilled_by"]
+    outcome = n["dir"] / "outcome.md"
+    if not ref and outcome.exists():
+        m = re.search(r"(?<![\w/])#(\d+)\b", outcome.read_text())
+        ref = f"#{m.group(1)}" if m else None
+    parts = [n["status"]] + ([str(ref)] if ref else []) + \
+        ([f"milestone {n['milestone']}"] if n["milestone"] else [])
+    title = n["title"].replace("(", "[").replace(")", "]")
+    return f"- {n['id']}: {title} ({', '.join(parts)})"
+
+
+def apply_archive(root, nodes, ids):
+    f = root / "archive.md"
+    text = f.read_text() if f.exists() else (
+        "# Archive\n\nDone nodes whose folders were removed. Their full text is in git history.\n\n")
+    for k in ids:
+        text += archive_line(nodes[k]) + "\n"
+        shutil.rmtree(nodes[k]["dir"])
+    f.write_text(text)
+
+
+BRANCH_PREFIX = {"feature": "feat", "fix": "fix", "hotfix": "hotfix", "refactor": "refactor",
+                 "docs": "docs", "chore": "chore", "release": "release", "spike": "spike",
+                 "contract": "feat"}
+TITLE_PREFIX = {"feature": "feat", "fix": "fix", "hotfix": "fix", "refactor": "refactor",
+                "docs": "docs", "chore": "chore", "release": "chore", "spike": "chore",
+                "contract": "feat"}
+
+
+def branch_name(n):
+    """A descriptive branch for a node's pull request: <type>/<node id>."""
+    kind = n["type"] or ("spike" if n["spike"] else "feature")
+    return f"{BRANCH_PREFIX.get(kind, 'feat')}/{n['id']}"
+
+
+def pr_title(n):
+    """A conventional pull request title from the node's type and title."""
+    kind = n["type"] or ("spike" if n["spike"] else "feature")
+    title = n["title"][:1].lower() + n["title"][1:] if n["title"] else n["id"]
+    return f"{TITLE_PREFIX.get(kind, 'feat')}: {title}"
 
 
 def rel(path):
@@ -934,12 +1040,13 @@ def main():
     ap.add_argument("root", type=Path)
     ap.add_argument("command", nargs="?", default="status",
                     choices=["status", "check", "waves", "ready", "context", "impact", "verify", "refine",
-                             "overview", "can-merge"])
+                             "overview", "can-merge", "archive"])
     ap.add_argument("node", nargs="?")
     ap.add_argument("--json", action="store_true")
     ap.add_argument("--max-parallel", type=int, default=4)
     ap.add_argument("--budget", type=int, default=20000)
     ap.add_argument("--upto", choices=list(PRIORITIES), default="could")
+    ap.add_argument("--apply", action="store_true", help="archive: remove the folders and write archive.md")
     ap.add_argument("--review-clean", action="store_true", help="can-merge: the review had no blocking or should-fix findings")
     ap.add_argument("--checks-pass", action="store_true", help="can-merge: lint, typecheck, build and tests passed")
     ap.add_argument("--proof", action="store_true", help="can-merge: the fix fails on base and passes on head")
@@ -984,6 +1091,21 @@ def main():
             print(f"total ~{total} tokens of {args.budget} budget")
             if total > args.budget:
                 print("over budget: split this node or tighten its dependencies' outcomes")
+        return
+
+    if args.command == "archive":
+        ids, unused = archive_candidates(nodes, contracts)
+        if args.json:
+            print(json.dumps({"nodes": ids, "unused_contracts": unused}, indent=2))
+            return
+        for k in ids:
+            print(("archived " if args.apply else "would archive ") + archive_line(nodes[k])[2:])
+        if not ids:
+            print("no done nodes to archive")
+        if unused:
+            print("contracts no open node uses (remove or keep as reference): " + ", ".join(unused))
+        if args.apply and ids:
+            apply_archive(args.root, nodes, ids)
         return
 
     if args.command == "can-merge":
@@ -1068,6 +1190,8 @@ def main():
                 "id": k, "title": nodes[k]["title"], "size": nodes[k]["size"],
                 "priority": nodes[k]["priority"],
                 "target": nodes[k].get("target_eff"),
+                "branch": branch_name(nodes[k]),
+                "pr_title": pr_title(nodes[k]),
                 "model": model_for(nodes[k]), "gate": nodes[k]["gate"],
                 "brief": rel(nodes[k]["dir"] / "brief.md"),
                 "context": [f["path"] for f in context_files(args.root, k, nodes, contracts)],

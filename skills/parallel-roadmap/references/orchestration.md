@@ -66,7 +66,7 @@ Waves printed by `plan.py status` are a forecast in both modes. The decision to 
 
 ## Spawning a worker
 
-Use the Agent tool with `isolation: "worktree"` and the model from `ready --json`. Fill in `templates/worker-prompt.md`. The prompt names the node, the root, the base branch and the exact context files. It does not paste their contents, so the worker reads the current versions.
+Use the Agent tool with `isolation: "worktree"` and the model from `ready --json`. Agent worktrees start on a generated branch such as `worktree-agent-<hash>`; the worker renames it to the `branch` from `ready --json` (`feat/<node id>`, `fix/<node id>` and so on) before its first commit, and uses `pr_title` for the pull request, so branches and pull requests read like the roadmap. Fill in `templates/worker-prompt.md`. The prompt names the node, the root, the base branch and the exact context files. It does not paste their contents, so the worker reads the current versions.
 
 Before spawning, check that the base branch already contains what the worker needs: the frozen contracts and the outcomes of its dependencies.
 

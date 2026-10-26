@@ -270,6 +270,41 @@ class PlanTest(unittest.TestCase):
         (self.root / "GOAL.md").write_text("# G\n")
         self.assertEqual(plan.merge_policy(self.root)["mode"], "maintainer")
 
+    def test_archive_only_what_nothing_open_needs(self):
+        contract(self.root, "api", status="frozen")
+        node(self.root, "a", size="M", owns="[a/**]", status="done", milestone="q1", provides="[api]")
+        (self.root / "nodes/a/outcome.md").write_text("Built in #57.\n")
+        node(self.root, "b", size="M", owns="[b/**]", status="done")
+        node(self.root, "c", size="M", owns="[c/**]", depends_on=dep("b", "hard", why="x"))
+        nodes, contracts, _ = self.load()
+        ids, unused = plan.archive_candidates(nodes, contracts)
+        self.assertEqual(ids, ["a"])  # b is still needed by open node c
+        self.assertEqual(unused, ["api"])
+        plan.apply_archive(self.root, nodes, ids)
+        self.assertFalse((self.root / "nodes/a").exists())
+        self.assertIn("- a: a (done, #57, milestone q1)", (self.root / "archive.md").read_text())
+
+    def test_archived_nodes_still_satisfy_dependencies(self):
+        (self.root / "archive.md").write_text("# Archive\n\n- old: Old work (done, #12)\n")
+        node(self.root, "new", size="M", owns="[n/**]", depends_on=dep("old", "hard", why="x"))
+        nodes, contracts, (errors, warnings) = self.load()
+        self.assertEqual(errors, [])
+        self.assertTrue(nodes["old"]["archived"])
+        self.assertEqual(plan.ready(nodes, contracts), ["new"])
+        s = plan.schedule(nodes, contracts, 4)
+        text = plan.overview(self.root, nodes, contracts, s, None, warnings)
+        self.assertIn("- [x] **old**: Old work [archived]", text)
+
+    def test_branch_and_title_from_node(self):
+        node(self.root, "frame-writer", size="M", owns="[a/**]", type="feature", title="Frame writer with byte parity")
+        node(self.root, "subtotal", size="S", owns="[b/**]", type="fix", title="Subtotal skips the first item")
+        node(self.root, "probe", size="S", owns="[c/**]", spike="true", title="Measure a Lua state")
+        nodes, _, _ = self.load()
+        self.assertEqual(plan.branch_name(nodes["frame-writer"]), "feat/frame-writer")
+        self.assertEqual(plan.pr_title(nodes["frame-writer"]), "feat: frame writer with byte parity")
+        self.assertEqual(plan.branch_name(nodes["subtotal"]), "fix/subtotal")
+        self.assertEqual(plan.branch_name(nodes["probe"]), "spike/probe")
+
     def test_large_plan_of_sized_nodes_does_not_warn(self):
         for i in range(30):
             node(self.root, f"n{i}", size="M", owns=f"[src/n{i}/**]")

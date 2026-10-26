@@ -37,7 +37,7 @@ Each worktree has an index (shown by `wt.py new` and `wt.py list`). When a dev s
 
 Find the base with `python3 <skills>/pr-review/scripts/branch_policy.py --type <feature|fix|hotfix|...>`. Trunk-based repos use the default branch for everything. Gitflow-style repos (a `dev` or `develop` branch exists, maybe `next`) send features and fixes to `dev`, hotfixes to the default branch, and promote `dev -> next -> main` in release PRs. A roadmap's `GOAL.md` or a `.github/branches.yml` file can set the policy explicitly. When a roadmap node has a `target`, that wins.
 
-Start from the latest base: `git fetch` first, then `wt.py new <branch> --base origin/<base>` or the local base. Name branches by type: `feat/...`, `fix/...`, `hotfix/...`, `refactor/...`, `docs/...`, `release/...`.
+Start from the latest base: `git fetch` first, then `wt.py new <branch> --base origin/<base>` or the local base. Name branches by type: `feat/...`, `fix/...`, `hotfix/...`, `refactor/...`, `docs/...`, `release/...`. When the work starts in a worktree with a generated branch name (such as `worktree-agent-<hash>`), rename it with `git branch -m <descriptive name>` before the first commit, so the pull request does not carry the generated name. For a roadmap node, use the `branch` and `pr_title` from `plan.py ready --json`.
 
 **Hotfix**: a fix that must reach the released branch now. Branch from the default branch, open the PR against it, and after it merges open back-merge PRs into the other integration branches (the `back_merge` list from `branch_policy.py`, for example `next` then `dev`), so the fix is not lost at the next release. A normal fix goes to `dev` and ships with the next release.
 

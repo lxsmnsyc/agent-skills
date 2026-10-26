@@ -8,7 +8,7 @@ export const meta = {
   ],
 }
 
-// args: { root, skill, base, nodes: [{ id, title, model, context: [paths] }] }
+// args: { root, skill, base, nodes: [{ id, title, model, branch, pr_title, context: [paths] }] }
 // `base` is the branch pull requests target (usually main). Check it out before running,
 // so worktrees start from it. The orchestrator reviews, updates status and handles gates
 // after this returns.
@@ -63,7 +63,7 @@ if (!Array.isArray(nodes) || nodes.length === 0) {
 function workerPrompt(n) {
   return `You are the worker for node \`${n.id}\` ("${n.title}") of the roadmap in \`${root}\`. Several other agents are working on other nodes at the same time, each in its own git worktree. Your work must stay inside your own node so that everyone's branches merge cleanly.
 
-First create a branch named \`roadmap/${n.id}\` from the current HEAD and work on it.
+First give your branch a descriptive name: \`git branch -m ${n.branch || 'feat/' + n.id}\` (your worktree may start on a generated name such as worktree-agent-...). Use "${n.pr_title || n.title}" as the pull request title, following the repo's own title convention if it differs.
 
 Read these files in this order. They are all the context you need; do not read other nodes' logs.
 ${n.context.map(p => `- ${p}`).join('\n')}

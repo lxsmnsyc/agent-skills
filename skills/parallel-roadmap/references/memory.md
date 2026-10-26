@@ -52,7 +52,7 @@ Sort by how long it should live:
 
 - **Lasting rules about the code** go into a nested `CLAUDE.md` next to that code, for example `server/store/CLAUDE.md`: "Migrations must be idempotent, because restore replays them." Claude Code loads a nested `CLAUDE.md` when an agent works on files in that folder, so the rule reaches exactly the agents that need it, with no search. Every worktree gets it because it is committed.
 - **Decisions** go into the repo's decision records (ADRs or similar). During the roadmap, a draft can live in the node folder; the curator moves it.
-- **Roadmap state** (goal, contracts, nodes, reviews) lives in `<root>` and stops mattering once the roadmap closes.
+- **Roadmap state** (goal, contracts, nodes, reviews) lives in `<root>`. A finished node's folder is archived once nothing open depends on it (curator step 9), so a roadmap that runs for months keeps only the work in flight and its direct inputs.
 - **Calibration** lives in `<roadmaps-dir>/CALIBRATION.md` and is shared by all roadmaps in the repo.
 
 Rules for nested `CLAUDE.md` files:
@@ -76,8 +76,9 @@ Run one curator pass at each checkpoint (after a wave, or after a few nodes in r
 6. Updates downstream briefs whose upstream outcome deviated from the plan, before those nodes start.
 7. Deletes or corrects memory that the new outcomes proved wrong. Check that each rule still matches the code it describes.
 8. Appends calibration entries.
-9. Lists nodes whose priority looks wrong after this wave, and inbox items worth a node, for the user to decide.
-10. Writes `reviews/wave-<n>.md`: what landed, what changed in the plan, what it learned, and the current must line (the wave by which all must work is placed) and the progress of each milestone.
+9. Archives finished nodes: `plan.py <root> archive` lists done nodes that no open node depends on. Once their learnings, decisions and calibration are recorded, `--apply` removes their folders and adds one line each to `archive.md` (title, pull request, milestone). `plan.py` still counts them as done, and their full text stays in git history. The first time in a roadmap, show the user the list before applying. The same command lists frozen contracts that no open node uses; remove them when the code is the better reference.
+10. Lists nodes whose priority looks wrong after this wave, and inbox items worth a node, for the user to decide.
+11. Writes `reviews/wave-<n>.md`: what landed, what changed in the plan, what it learned, and the current must line (the wave by which all must work is placed) and the progress of each milestone.
 
 ## Calibration
 
