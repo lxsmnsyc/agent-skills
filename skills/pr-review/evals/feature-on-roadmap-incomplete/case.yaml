@@ -1,0 +1,6 @@
+schema_version: "1.1"
+name: feature-on-roadmap-incomplete
+expected_outcome: |
+  The review matches the branch to the tax node, checks each acceptance criterion, finds the zero and negative rate criterion is not met (no RangeError, no tests for it), notes the change to src/cart.js is outside the node's owned paths, runs the verify command and checks, and does not recommend approval yet.
+context:
+  scaffold_script: place-files.sh

@@ -1,0 +1,6 @@
+schema_version: "1.1"
+name: feature-off-roadmap
+expected_outcome: |
+  The review finds the wishlist is not part of the checkout roadmap, judges its value against the roadmap goal, and proposes it as a roadmap addition with a suggested priority and questions for the maintainer, instead of recommending approval. It still reports checks, and may note the in-memory store.
+context:
+  scaffold_script: place-files.sh

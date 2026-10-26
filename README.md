@@ -5,6 +5,7 @@ Skills for Claude Code and other agents that support the Agent Skills format.
 ## Skills
 
 - [`parallel-roadmap`](skills/parallel-roadmap/SKILL.md): plan and run a roadmap as a dependency graph, so several agents can work at the same time without blocking each other.
+- [`pr-review`](skills/pr-review/SKILL.md): review a pull request or branch with evidence. Fixes are reproduced on the base and proven on the head, features are checked against the roadmap, checks run locally, and approval goes to the maintainer.
 - [`plain-writing`](skills/plain-writing/SKILL.md): rules for short, exact prose that people and agents can both scan, with a checker script and an optional hook for commits and PRs.
 
 ## Install
@@ -36,6 +37,15 @@ Linear roadmaps make every item wait for the one above it. Most of those waits a
 ```
 python3 skills/parallel-roadmap/scripts/plan.py docs/roadmaps/<slug> status
 ```
+
+## pr-review
+
+Reviews answer three questions with evidence: does the change work, is it worth what it costs, and does it pass the project's checks.
+
+- Fixes: `scripts/repro.py` runs the reproduction on the base and the head, in worktrees under `.git/review-worktrees/`, and reports `proven`, `not-reproduced`, `not-fixed` or `inconclusive`.
+- Features: checked against their roadmap node's acceptance criteria and owned paths. Features with no node get a roadmap proposal for the maintainer instead of an approval.
+- Every change: `scripts/checks.py` finds and runs lint, typecheck, build and tests locally, so private repos never start billed CI. `scripts/size_diff.py` measures build size.
+- Reviews are posted as comments, never as "request changes". The reviewer never approves. Approval goes to the maintainer, found by `scripts/pr_info.py`.
 
 ## plain-writing
 

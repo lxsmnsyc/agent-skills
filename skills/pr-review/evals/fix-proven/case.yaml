@@ -1,0 +1,6 @@
+schema_version: "1.1"
+name: fix-proven
+expected_outcome: |
+  The review reproduces the bug on main with the branch's test (fails), shows it passes on the branch, runs lint, build and tests, finds no blocking issues, and says the change is ready for maintainer approval. It posts nothing and approves nothing.
+context:
+  scaffold_script: place-files.sh

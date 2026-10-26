@@ -1,0 +1,6 @@
+schema_version: "1.1"
+name: fix-not-reproduced
+expected_outcome: |
+  The review tries to reproduce the rounding bug on main and cannot: main already returns the same totals, including the branch's new test case. It says the problem is not shown, asks for a reproduction or the failing input, and does not recommend approval. It also notices the change is equivalent for positive totals.
+context:
+  scaffold_script: place-files.sh
