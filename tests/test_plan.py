@@ -192,12 +192,11 @@ class PlanTest(unittest.TestCase):
         self.assertEqual(errors, [])
         self.assertEqual(plan.ready(nodes, contracts), ["b"])
 
-    def test_node_budget_warns(self):
-        for i in range(plan.MAX_NODES + 1):
+    def test_large_plan_of_sized_nodes_does_not_warn(self):
+        for i in range(30):
             node(self.root, f"n{i}", size="M", owns=f"[src/n{i}/**]")
         _, _, (_, warnings) = self.load()
-        self.assertTrue(any("open nodes" in w for w in warnings))
-
+        self.assertEqual(warnings, [])
 
 if __name__ == "__main__":
     unittest.main()

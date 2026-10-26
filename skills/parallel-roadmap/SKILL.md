@@ -98,7 +98,7 @@ Agree on what "must" means for this roadmap, usually a release or a user-visible
 
 Read `references/decomposition.md` before this step. It holds the sizing rubric, the split strategies and the merge rules.
 
-A node is one pull request: a change a reviewer can read in one sitting and that is safe to merge on its own. That sets the size range. Most nodes are M. Many S nodes in a row on the same files mean the plan is cut too fine, and each extra node costs a worktree, a review and a merge. As a rough check, a batch of work a single developer would do in two or three weeks should give about 8 to 20 nodes, not 40.
+A node is one pull request: a change a reviewer can read in one sitting and that is safe to merge on its own. That sets the size range. Most nodes are M. There is no limit on how many nodes a roadmap has; a big goal needs many. What signals a plan cut too fine is its shape: chains of S nodes on the same files, or a plan that is mostly S. `plan.py check` warns about both, because each extra node costs a worktree, a review and a merge.
 
 For each node, write `nodes/<id>/brief.md` with priority, typed dependencies, owned paths (globs), size, acceptance criteria and a `verify` command when the acceptance can be checked by one. Keep briefs short: what the worker cannot get from the contracts and dependency outcomes, and nothing else. Then:
 

@@ -32,8 +32,6 @@ TYPES = {"feature", "fix", "hotfix", "refactor", "docs", "chore", "release", "sp
 # could: worth doing when capacity is free. later: parked, not scheduled.
 PRIORITIES = {"must": 0, "should": 1, "could": 2, "later": 3}
 PRIORITY_NAMES = {v: k for k, v in PRIORITIES.items()}
-# Above this many open nodes a plan is usually cut too fine. Split big goals into several roadmaps.
-MAX_NODES = 20
 CONTRACT_STATUSES = {"draft", "frozen"}
 
 
@@ -480,11 +478,6 @@ def check(nodes, contracts, load_errors, policy=None):
                 f"{path} is edited by {len(ids)} open nodes ({', '.join(ids)}); split it by "
                 "feature in an early, behavior-preserving node so each owns its own module "
                 "(decomposition.md, 'Split hot files by feature first'), or say why not")
-        if len(planned) > MAX_NODES:
-            warnings.append(
-                f"plan has {len(planned)} open nodes; above {MAX_NODES} the plan is usually cut too "
-                "fine. Merge steps that touch the same files into one node with a Steps list, "
-                "or split the roadmap by goal")
         small = [n for n in planned if n["size"] == "S"]
         if len(planned) >= 8 and len(small) * 2 > len(planned):
             warnings.append(
