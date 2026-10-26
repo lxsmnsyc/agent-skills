@@ -142,6 +142,43 @@ class PlanTest(unittest.TestCase):
         self.assertEqual(len(s["waves"]), 1)
         self.assertEqual(s["shared"][0], [("src/core.ts", ["a", "b"])])
 
+    def goal_with_branches(self):
+        (self.root / "GOAL.md").write_text(
+            "---\nbranches:\n  feature: dev\n  fix: dev\n  hotfix: main\n"
+            "  promote: dev -> next -> main\n---\n# Goal\n")
+
+    def test_branch_policy_sets_targets(self):
+        self.goal_with_branches()
+        node(self.root, "f", size="M", owns="[src/f/**]", type="feature")
+        node(self.root, "h", size="S", owns="[src/h/**]", type="hotfix")
+        node(self.root, "x", size="S", owns="[src/x/**]", target="next")
+        nodes, contracts, errs = plan.load(self.root)
+        policy = plan.load_policy(self.root)
+        self.assertEqual(policy["promote"], ["dev", "next", "main"])
+        plan.apply_targets(nodes, policy)
+        self.assertEqual({k: n["target_eff"] for k, n in nodes.items()},
+                         {"f": "dev", "h": "main", "x": "next"})
+        errors, warnings = plan.check(nodes, contracts, errs, policy)
+        self.assertEqual(errors, [])
+
+    def test_release_node_must_wait_for_open_work(self):
+        self.goal_with_branches()
+        node(self.root, "f", size="M", owns="[src/f/**]", type="feature")
+        node(self.root, "rel", size="S", owns="[CHANGELOG.md]", type="release", **{"from": "dev"},
+             target="next")
+        nodes, contracts, errs = plan.load(self.root)
+        policy = plan.load_policy(self.root)
+        plan.apply_targets(nodes, policy)
+        _, warnings = plan.check(nodes, contracts, errs, policy)
+        self.assertTrue(any("does not wait for open work on dev: f" in w for w in warnings))
+
+    def test_released_counts_as_done(self):
+        node(self.root, "a", size="S", owns="[a]", status="released", fulfilled_by="v1.2.0")
+        node(self.root, "b", size="S", owns="[b]", depends_on=dep("a", "hard", why="x"))
+        nodes, contracts, (errors, _) = self.load()
+        self.assertEqual(errors, [])
+        self.assertEqual(plan.ready(nodes, contracts), ["b"])
+
     def test_node_budget_warns(self):
         for i in range(plan.MAX_NODES + 1):
             node(self.root, f"n{i}", size="M", owns=f"[src/n{i}/**]")

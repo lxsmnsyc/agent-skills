@@ -52,6 +52,12 @@ class PrReviewTest(unittest.TestCase):
         self.assertEqual(info["type_hint"], "fix")
         self.assertEqual(sorted(f["path"] for f in info["files"]), ["sum.js", "sum.test.js"])
 
+    def test_hotfix_branch_is_typed_hotfix(self):
+        sys.path.insert(0, str(SCRIPTS))
+        import pr_info
+        self.assertEqual(pr_info.type_hint("fix: subtotal", [], "hotfix/subtotal"), "hotfix")
+        self.assertEqual(pr_info.type_hint("fix: subtotal", [], "fix/subtotal"), "fix")
+
     def test_repro_proves_fix_with_edited_test_file(self):
         wt = self.prepare()
         before = (Path(wt["base"]) / "sum.test.js").read_text()

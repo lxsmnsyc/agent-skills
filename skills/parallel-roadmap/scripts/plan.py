@@ -25,7 +25,9 @@ from pathlib import Path
 SIZE_POINTS = {"S": 1, "M": 2, "L": 3, "XL": 5}
 DEFAULT_MODEL = {"S": "sonnet", "M": "sonnet", "L": "opus", "XL": "opus"}
 KINDS = {"contract", "behavior", "hard"}
-STATUSES = {"todo", "active", "done", "dropped"}
+STATUSES = {"todo", "active", "done", "released", "dropped"}
+DONE = {"done", "released"}
+TYPES = {"feature", "fix", "hotfix", "refactor", "docs", "chore", "release", "spike", "contract"}
 # must: needed for the goal now. should: important, but the goal can ship without it.
 # could: worth doing when capacity is free. later: parked, not scheduled.
 PRIORITIES = {"must": 0, "should": 1, "could": 2, "later": 3}
@@ -92,9 +94,18 @@ def parse_frontmatter(text, where):
                 data[key].append(_scalar(content))
         else:
             if item is None:
-                raise ValueError(f"{where}: line {n}: nested key outside a list item")
+                # `key:` followed by indented `k: v` lines is a map, not a list.
+                if key is not None and data.get(key) == []:
+                    data[key] = {}
+                if key is None or not isinstance(data.get(key), dict):
+                    raise ValueError(f"{where}: line {n}: nested key outside a list item or map")
+                item_map = data[key]
+            else:
+                item_map = item
             k, _, v = s.partition(":")
-            item[k.strip()] = _scalar(v)
+            val = v.strip()
+            item_map[k.strip()] = ([x.strip() for x in val.split("->")] if "->" in val
+                                   else _scalar(v))
     return data
 
 
@@ -146,6 +157,9 @@ def load(root):
             "exclusive": [str(x) for x in _as_list(fm.get("exclusive"))],
             "verify": _command(fm.get("verify")),
             "fulfilled_by": fm.get("fulfilled_by") or None,
+            "type": fm.get("type") or None,
+            "target": fm.get("target") or None,
+            "from": fm.get("from") or None,
         }
     for path in sorted((root / "contracts").glob("*.md")):
         if path.name.endswith(".change-request.md"):
@@ -169,6 +183,34 @@ def load(root):
 # ---------------------------------------------------------------------------
 # Graph
 # ---------------------------------------------------------------------------
+
+def load_policy(root):
+    """Branch policy from the `branches:` map in GOAL.md frontmatter, or None (one base branch)."""
+    goal = root / "GOAL.md"
+    if not goal.exists():
+        return None
+    try:
+        pol = parse_frontmatter(goal.read_text(), goal).get("branches")
+    except ValueError:
+        return None
+    return pol if isinstance(pol, dict) and pol else None
+
+
+def apply_targets(nodes, policy):
+    """The branch each node's pull request targets: its own `target`, else the policy for its type."""
+    for n in nodes.values():
+        t = n["target"]
+        if not t and policy:
+            t = policy.get(n["type"] or "feature") or policy.get("feature") or policy.get("default")
+        n["target_eff"] = t
+
+
+def policy_branches(policy):
+    out = set()
+    for v in (policy or {}).values():
+        out.update(v if isinstance(v, list) else [v])
+    return {str(b) for b in out if b}
+
 
 def live(nodes):
     return {k: n for k, n in nodes.items() if n["status"] != "dropped"}
@@ -317,8 +359,29 @@ def find_cycle(ids, preds):
 # Commands
 # ---------------------------------------------------------------------------
 
-def check(nodes, contracts, load_errors):
+def check(nodes, contracts, load_errors, policy=None):
     errors, warnings = list(load_errors), []
+    if policy:
+        known = policy_branches(policy)
+        for nid, n in live(nodes).items():
+            if n["type"] and n["type"] not in TYPES:
+                warnings.append(f"node {nid}: type '{n['type']}' not in {sorted(TYPES)}")
+            if n.get("target_eff") and n["target_eff"] not in known:
+                warnings.append(f"node {nid}: targets '{n['target_eff']}', which is not a branch "
+                                f"in the policy ({', '.join(sorted(known))})")
+        for nid, n in live(nodes).items():
+            if n["type"] != "release":
+                continue
+            if not (n["from"] and n["target"]):
+                errors.append(f"node {nid}: a release node needs `from` and `target` branches")
+                continue
+            preds = start_preds(n, live(nodes), contracts)
+            missing = sorted(k for k, o in live(nodes).items()
+                             if k != nid and o.get("target_eff") == n["from"]
+                             and o["status"] not in DONE and k not in preds)
+            if missing:
+                warnings.append(f"node {nid}: releases {n['from']} -> {n['target']} but does not wait "
+                                f"for open work on {n['from']}: {', '.join(missing)}")
     for nid, n in nodes.items():
         where = f"node {nid}"
         if n["dirname"] != nid:
@@ -333,9 +396,9 @@ def check(nodes, contracts, load_errors):
             errors.append(f"{where}: size must be one of S, M, L, XL")
         elif n["size"] == "XL" and n["status"] == "todo":
             warnings.append(f"{where}: size XL, split it before scheduling")
-        if not n["owns"]:
+        if not n["owns"] and n["type"] != "release":
             warnings.append(f"{where}: no owned paths, conflicts cannot be detected")
-        if (n["status"] == "done" and not n["fulfilled_by"]
+        if (n["status"] in DONE and not n["fulfilled_by"]
                 and not (n["dir"] / "outcome.md").exists()):
             warnings.append(f"{where}: done but has no outcome.md or fulfilled_by")
         for c in n["provides"]:
@@ -391,11 +454,11 @@ def check(nodes, contracts, load_errors):
                     f"{PRIORITY_NAMES[rank]}; raise it, or remove the dependency")
         lv = live(nodes)
         for k, n in lv.items():
-            waiting = sorted(p for p in start_preds(n, lv, contracts) if lv[p]["status"] != "done")
-            if n["status"] in ("active", "done") and waiting:
+            waiting = sorted(p for p in start_preds(n, lv, contracts) if lv[p]["status"] not in DONE)
+            if (n["status"] == "active" or n["status"] in DONE) and waiting:
                 warnings.append(f"node {k}: {n['status']} but its start dependencies are not done: "
                                 + ", ".join(waiting))
-        planned = [n for n in lv.values() if n["status"] != "done"]
+        planned = [n for n in lv.values() if n["status"] not in DONE]
         if len(planned) > MAX_NODES:
             warnings.append(
                 f"plan has {len(planned)} open nodes; above {MAX_NODES} the plan is usually cut too "
@@ -423,8 +486,8 @@ def schedule(nodes, contracts, max_parallel, upto="could"):
         for p in ps:
             succs[p].add(k)
 
-    pending = {k for k, n in lv.items() if n["status"] != "done" and eff[k][0] <= cut}
-    parked = sorted(k for k, n in lv.items() if n["status"] != "done" and eff[k][0] > cut)
+    pending = {k for k, n in lv.items() if n["status"] not in DONE and eff[k][0] <= cut}
+    parked = sorted(k for k, n in lv.items() if n["status"] not in DONE and eff[k][0] > cut)
     level, points = levels(lv, succs, pending)
 
     waves, deferred, shared_notes = [], [], []
@@ -466,9 +529,9 @@ def schedule(nodes, contracts, max_parallel, upto="could"):
 
     integration = []
     for k, n in lv.items():
-        if k not in pending and n["status"] != "done":
+        if k not in pending and n["status"] not in DONE:
             continue
-        waiting = sorted(p for p in integration_preds(n, lv) if lv[p]["status"] != "done")
+        waiting = sorted(p for p in integration_preds(n, lv) if lv[p]["status"] not in DONE)
         if waiting:
             integration.append((k, waiting))
 
@@ -492,11 +555,11 @@ def ready(nodes, contracts, upto="could"):
     eff = effective_priority(nodes, contracts)
     preds = {k: start_preds(n, lv, contracts) for k, n in lv.items()}
     succs = {k: {o for o in lv if k in preds[o]} for k in lv}
-    pending = {k for k, n in lv.items() if n["status"] != "done"}
+    pending = {k for k, n in lv.items() if n["status"] not in DONE}
     level, _ = levels(lv, succs, pending)
     out = [k for k, n in lv.items()
            if n["status"] == "todo" and n["size"] != "XL" and eff[k][0] <= PRIORITIES[upto]
-           and all(lv[p]["status"] == "done" for p in preds[k])]
+           and all(lv[p]["status"] in DONE for p in preds[k])]
     return sorted(out, key=lambda k: (eff[k][0], -level[k], k))
 
 
@@ -506,7 +569,7 @@ def impact(nid, nodes, contracts, max_parallel):
     lv = live(nodes)
     out = {"node": nid, "overlaps": [], "contracts": [], "downstream": [], "upstream": []}
     for k, o in lv.items():
-        if k == nid or o["status"] == "done":
+        if k == nid or o["status"] in DONE:
             continue
         why = owns_conflict(n, o)
         if why:
@@ -521,7 +584,7 @@ def impact(nid, nodes, contracts, max_parallel):
     preds = start_preds(n, lv, contracts)
     out["upstream"] = [{"node": p, "status": lv[p]["status"]} for p in sorted(preds)]
     out["downstream"] = sorted(k for k, o in lv.items() if nid in start_preds(o, lv, contracts))
-    out["can_start_now"] = n["status"] == "todo" and all(lv[p]["status"] == "done" for p in preds)
+    out["can_start_now"] = n["status"] == "todo" and all(lv[p]["status"] in DONE for p in preds)
     without = dict(nodes)
     without.pop(nid)
     a = schedule(nodes, contracts, max_parallel)
@@ -613,6 +676,7 @@ def print_schedule(s, nodes):
         for k in wave:
             n = nodes[k]
             pri = s["priority"][k]
+            tgt = f" -> {n['target_eff']}" if n.get("target_eff") else ""
             tags = [pri if pri == n["priority"] else f"{pri} (was {n['priority']})",
                     n["size"] or "?", model_for(n)]
             if n["status"] == "active":
@@ -623,7 +687,7 @@ def print_schedule(s, nodes):
                 tags.append("spike")
             if n["gate"]:
                 tags.append("gate")
-            print(f"  {k}  [{', '.join(tags)}]  {n['title']}")
+            print(f"  {k}  [{', '.join(tags)}]{tgt}  {n['title']}")
         for k, other, why in s["deferred"][i - 1]:
             print(f"  (deferred {k}: conflicts with {other}: {why})")
         for path, ks in s["shared"][i - 1]:
@@ -658,7 +722,9 @@ def main():
     if not (args.root / "nodes").is_dir():
         sys.exit(f"{args.root}: no nodes/ directory")
     nodes, contracts, load_errors = load(args.root)
-    errors, warnings = check(nodes, contracts, load_errors)
+    policy = load_policy(args.root)
+    apply_targets(nodes, policy)
+    errors, warnings = check(nodes, contracts, load_errors, policy)
 
     if args.command == "check":
         if args.json:
@@ -742,6 +808,7 @@ def main():
             print(json.dumps([{
                 "id": k, "title": nodes[k]["title"], "size": nodes[k]["size"],
                 "priority": nodes[k]["priority"],
+                "target": nodes[k].get("target_eff"),
                 "model": model_for(nodes[k]), "gate": nodes[k]["gate"],
                 "brief": rel(nodes[k]["dir"] / "brief.md"),
                 "context": [f["path"] for f in context_files(args.root, k, nodes, contracts)],

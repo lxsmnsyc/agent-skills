@@ -1,8 +1,11 @@
 ---
 id: <id, same as the folder name>
 title: <short title>
-status: todo            # todo | active | done | dropped (only the orchestrator changes this)
+status: todo            # todo | active | done | released | dropped (only the orchestrator changes this)
 priority: should        # must (needed now) | should (important, can ship without) | could (when capacity is free) | later (parked)
+type: feature           # feature | fix | hotfix | refactor | docs | chore | release | spike | contract
+target:                 # branch the pull request targets; empty means the branch policy for this type
+from:                   # release nodes only: the branch being promoted (target is where it goes)
 size: M                 # S | M | L | XL (XL must be split)
 spike: false            # true for nodes that answer a question instead of shipping code
 verify:                 # optional command run from the repo root; exit 0 means the acceptance holds. Test behavior (run the tests, call the code), not file existence

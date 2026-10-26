@@ -9,7 +9,7 @@
   "plugins": [
     {
       "name": "agent-skills",
-      "description": "Plan and run roadmaps as a dependency graph so several agents work at once, and write short, exact prose for people and agents.",
+      "description": "Plan work as a dependency graph, ship small independent pull requests, review with evidence, measure performance, and write short, exact prose.",
       "source": "./",
       "category": "productivity"
     }

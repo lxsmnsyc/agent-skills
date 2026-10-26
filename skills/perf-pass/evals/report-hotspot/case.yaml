@@ -1,0 +1,6 @@
+schema_version: "1.1"
+name: report-hotspot
+expected_outcome: |
+  The run measures a baseline with the benchmark, finds the hot spots (per-customer filter over all orders, includes on an array, JSON cloning), proposes several options, measures at least two side by side, picks one with a large real gain that keeps the tests passing and the output identical, and reports a table with numbers including rejected options. The change is committed on a branch, and main is untouched.
+context:
+  scaffold_script: place-files.sh

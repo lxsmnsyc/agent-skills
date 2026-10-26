@@ -7,6 +7,9 @@ Skills for Claude Code and other agents that support the Agent Skills format.
 - [`parallel-roadmap`](skills/parallel-roadmap/SKILL.md): plan and run a roadmap as a dependency graph, so several agents can work at the same time without blocking each other.
 - [`pr-author`](skills/pr-author/SKILL.md): write changes as small pull requests that merge on their own. Works in worktrees when the machine has room, splits bugs found on the base into their own fix PRs, self-reviews with pr-review, and asks before a push would start billed CI.
 - [`pr-review`](skills/pr-review/SKILL.md): review a pull request or branch with evidence. Fixes are reproduced on the base and proven on the head, features are checked against the roadmap, checks run locally, and approval goes to the maintainer.
+- [`perf-pass`](skills/perf-pass/SKILL.md): profile a finished feature, try several optimizations side by side, and keep the one with the best measured gain for its cost. Runtime for libraries and servers, bundle size for web apps.
+- [`changesets`](skills/changesets/SKILL.md): write the changeset for a change. The bump level follows whether the thing existed before; `major` only with the maintainer's approval.
+- [`ts-style`](skills/ts-style/SKILL.md): style rules for `.ts` and `.js` code, starting with for-of loops instead of callback Array methods.
 - [`plain-writing`](skills/plain-writing/SKILL.md): rules for short, exact prose that people and agents can both scan, with a checker script and an optional hook for commits and PRs.
 
 ## Install
@@ -56,9 +59,16 @@ Reviews answer three questions with evidence: does the change work, is it worth 
 - Every change: `scripts/checks.py` finds and runs lint, typecheck, build and tests locally, so private repos never start billed CI. `scripts/size_diff.py` measures build size.
 - Reviews are posted as comments, never as "request changes". The reviewer never approves. Approval goes to the maintainer, found by `scripts/pr_info.py`.
 
+## perf-pass
+
+- Picks the axis (runtime, or size for web apps), measures a baseline with a realistic benchmark, and profiles before changing anything.
+- Proposes at least three options from different kinds of fix, tries the promising ones in separate worktrees, and measures them side by side.
+- `scripts/bench.py` interleaves runs across checkouts and marks a change as real only when it beats the noise.
+- Reports a table with the chosen option and the rejected ones, so measured dead ends are not tried again.
+
 ## plain-writing
 
-Rules for comments, commits, PRs, reviews, docs and roadmap files. `scripts/check_prose.py` flags dashes, stock phrases, common metaphors, wordy phrases, long sentences and size claims without numbers.
+Rules for comments, commits, PRs, reviews, docs, interface text and roadmap files. `scripts/check_prose.py` flags dashes, stock phrases, common metaphors, wordy phrases, long sentences and size claims without numbers.
 
 The plugin also registers a hook that checks `git commit` messages and `gh pr` and `gh issue` text before they run. It is off by default. Turn it on with an environment variable, for example in `~/.claude/settings.json`:
 

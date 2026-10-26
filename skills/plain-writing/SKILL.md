@@ -1,6 +1,6 @@
 ---
 name: plain-writing
-description: Writing rules for prose that ships with the code or that other agents read. Use when writing or editing code comments, commit messages, pull request titles and descriptions, review comments, issues, changesets, release notes, documentation, ADRs, or roadmap briefs and outcomes. Keeps text short, plain, dense with facts, free of metaphors, stock phrases and em-dashes, and easy for both people and agents to scan. Includes a checker script and an optional hook that blocks commits and PRs with violations.
+description: Writing rules for prose that ships with the code or that other agents read. Use when writing or editing code comments and doc blocks, commit messages, pull request titles and descriptions, review comments, issues, changesets, release notes, documentation, ADRs, interface text (labels, captions, hints, empty states), or roadmap briefs and outcomes. Keeps text short, plain, dense with facts, free of metaphors, stock phrases and em-dashes, and easy for both people and agents to scan. Includes a checker script and an optional hook that blocks commits and PRs with violations.
 ---
 
 # Plain writing
@@ -75,7 +75,9 @@ Briefs, outcomes, review comments and PR descriptions are often read by another 
 
 ## Format by artifact
 
-**Code comments.** Use short sentences above the code they explain. Say what the code does and why it is needed. Do not describe the change history. That belongs in the commit.
+**Code comments.** See "Code comments" below.
+
+**Interface text.** See "Interface text" below.
 
 **Commit messages.** Use the repo's convention, such as `type(scope): summary`. Keep the summary in the imperative and under 72 characters. Put extra detail in the body as a list of sentences.
 
@@ -105,11 +107,52 @@ Briefs, outcomes, review comments and PR descriptions are often read by another 
 
 **Issues.** Start with what happens and what should happen. Then the steps to reproduce, as a numbered list with exact commands. Then the environment.
 
-**Changesets and release notes.** Write one or two sentences a user of the package understands. Describe the visible effect, not the internal refactor.
+**Changesets and release notes.** Write one or two sentences a user of the package understands. Describe the visible effect, not the internal refactor. The changesets skill has the bump rules.
 
 **Documentation.** Lead with the sentence the reader needs most. Use lists for steps and options. Show a short example instead of describing one.
 
 **Decision records.** Context, decision, consequences, alternatives. Each as short lists. Put the decision in the first sentence of its section.
+
+## Code comments
+
+A comment earns its place by saying something the code cannot. Write it short, write the reason, and stop.
+
+- **Length.** Most blocks are one to four lines. A block over about eight lines needs a real reason: a formula, a protocol, a subtle invariant, a module header.
+- **Say the why.** The non-obvious reason, the constraint, the trap. Never restate the signature or the next line in prose.
+- **No history.** Cut "it used to", "this replaced", "that is what was wrong with". The old design is in git; the comment describes what is here now.
+- **No build-up.** State the point once. Cut the second example that makes the same case as the first.
+- **One idea per block.** A doc block with three paragraphs about three things means the code does too much, or two of them belong next to the code they are about.
+- **Keep verbatim**: lint directives, external links, formulas, and any warning that prevents a bug or data loss.
+- **Doc blocks** on exported functions, types and constants say what the thing is and the one thing a caller could get wrong, not how it works inside. Interface fields get one line each, unless the field carries a rule (a default, a stored-empty convention, a value that must never be trusted).
+- **Inline comments** explain a line that looks wrong but is right. If the code is plainly readable, delete the comment instead of writing one.
+- **Light is not cryptic.** Full sentences, no shorthand, no references nobody can resolve ("the fix", a bare ticket number).
+
+```ts
+// Avoid: says what the line says
+// Loop over every unit on the field and add it to the list
+for (const unit of battle.units()) { ... }
+
+// Prefer: says what a reader would get wrong
+// Copied first: the effect adds units mid-iteration, and a live
+// view would visit whatever it added
+for (const unit of [...battle.units()]) { ... }
+```
+
+## Interface text
+
+One label per thing. The layout says the rest. Where a control sits, what it sits beside and how it is grouped already tell the user what it is for. A second line that repeats that in words is one more thing to read before the screen can be used.
+
+- **No subtitle under a title** that restates it.
+- **No caption on a self-evident control.** A `Bid` button beside a price needs no "Place a bid on this item" under it.
+- **No section heading over a single group.** A heading earns its place only when there are several groups to tell apart.
+- **No hint that names the obvious gesture**, such as "Click to select" on something that highlights on hover.
+- **Group, align and order instead of explaining.** Related things sit together, the way out and the main action keep fixed places, and the most important value is the largest. If a screen only reads with a paragraph of help, fix the layout instead of writing the paragraph.
+
+What still gets words:
+
+- A label the control cannot carry itself: an icon-only button keeps its tooltip and its `aria-label`.
+- A consequence the user cannot see from the layout: an action that cannot be undone, a cost, a cooldown.
+- An empty state, which has no layout to read.
 
 ## Check before you send
 

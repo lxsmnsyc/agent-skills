@@ -1,0 +1,6 @@
+schema_version: "1.1"
+name: gitflow-hotfix
+expected_outcome: |
+  The run branches the hotfix from main, fixes subtotal with a test that fails on main, prepares the hotfix PR against main, and prepares back-merge PRs (or explicit steps) to bring the fix into next and dev. dev keeps its coupon work and is not rebuilt from main. Nothing is merged.
+context:
+  scaffold_script: place-files.sh

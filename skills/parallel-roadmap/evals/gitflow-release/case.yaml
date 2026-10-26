@@ -1,0 +1,6 @@
+schema_version: "1.1"
+name: gitflow-release
+expected_outcome: |
+  The roadmap records the branch policy (features and fixes to dev, promotion dev -> next -> main), so nodes target dev. It adds release nodes for dev -> next and next -> main that are gated and depend on the 0.4 must work (signup, login), and plan.py check passes. The active login brief is not edited. The response explains the release steps.
+context:
+  scaffold_script: place-files.sh

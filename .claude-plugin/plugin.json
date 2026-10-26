@@ -1,7 +1,7 @@
 {
   "name": "agent-skills",
-  "description": "Agent skills by lxsmnsyc: parallel-roadmap (plan and run roadmaps as a dependency graph so several agents work at once), pr-author (small, independent pull requests built in worktrees), pr-review (evidence-based, non-blocking reviews) and plain-writing (short, exact prose for people and agents).",
-  "version": "0.3.0",
+  "description": "Agent skills by lxsmnsyc: parallel-roadmap, pr-author, pr-review, perf-pass, changesets, ts-style and plain-writing. Plan work as a dependency graph, ship small independent pull requests, review with evidence, measure performance, and write short, exact prose.",
+  "version": "0.4.0",
   "author": {
     "name": "Alexis Munsayac",
     "url": "https://github.com/lxsmnsyc"

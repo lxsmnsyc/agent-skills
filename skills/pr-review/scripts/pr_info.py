@@ -7,7 +7,8 @@ Usage:
 
 Output: title, body, author, base, head, changed files, a type hint (fix, feature,
 other), linked issues, repo visibility, the maintainer and how it was found, the
-session user, CI check results, and roadmap nodes the change may belong to.
+session user, CI check results, roadmap nodes the change may belong to, and the
+base the branch policy expects for this kind of change (see branch_policy.py).
 """
 import argparse
 import fnmatch
@@ -16,6 +17,18 @@ import re
 import subprocess
 import sys
 from pathlib import Path
+
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import branch_policy  # noqa: E402
+
+
+def base_check(kind, base):
+    """Which branch this kind of change should target under the repo's branch policy."""
+    pol = branch_policy.policy()
+    want = branch_policy.target(pol, kind if kind in branch_policy.KINDS else "feature")
+    return {"policy_style": pol.get("style", pol.get("source")), "expected_base": want,
+            "base_ok": base == want, "policy_source": pol["source"]}
 
 
 def run(cmd, check=True):
@@ -31,6 +44,10 @@ def gh_json(args):
 
 def type_hint(title, labels, branch):
     text = " ".join([title.lower(), branch.lower()] + [l.lower() for l in labels])
+    if branch.lower().startswith(("hotfix/", "hotfix-")) or re.search(r"\bhotfix\b", text):
+        return "hotfix"
+    if branch.lower().startswith(("release/", "release-")) or "release" in [l.lower() for l in labels]:
+        return "release"
     if re.search(r"^(fix|bugfix|hotfix)(\(.+?\))?!?:", title.lower()) or re.search(
             r"\b(fix|bug|hotfix|regression)\b", text):
         return "fix"
@@ -138,6 +155,8 @@ def from_github(ref):
         "session_user_is_maintainer": bool(me and me in who),
         "checks": [{"name": c["name"], "state": c["state"], "bucket": c.get("bucket")} for c in checks],
         "roadmap_nodes": roadmap_nodes(root, files, pr["body"]),
+        **base_check(type_hint(pr["title"], [l["name"] for l in pr["labels"]], pr["headRefName"]),
+                     pr["baseRefName"]),
     }
 
 
@@ -169,6 +188,7 @@ def from_local(base, head):
         "session_user": me, "session_user_is_maintainer": True,
         "checks": [],
         "roadmap_nodes": roadmap_nodes(root, [f["path"] for f in files], body),
+        **base_check(type_hint(title, [], head), base),
     }
 
 

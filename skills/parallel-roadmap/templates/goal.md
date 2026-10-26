@@ -1,3 +1,13 @@
+---
+branches:
+  # Leave this empty when every pull request targets one branch.
+  # For gitflow-style repos, fill it from pr-review's branch_policy.py, for example:
+  # feature: dev
+  # fix: dev
+  # hotfix: main
+  # promote: dev -> next -> main
+---
+
 # <Roadmap title>
 
 ## Outcome

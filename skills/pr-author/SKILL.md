@@ -14,7 +14,7 @@ python3 <skill>/scripts/capacity.py                 # how many worktrees this ma
 python3 <skill>/scripts/wt.py new <branch> --base main   # worktree in .worktrees/<branch>, hidden from git status
 python3 <skill>/scripts/wt.py list
 python3 <skill>/scripts/wt.py remove <branch> [--delete-branch]
-python3 <skill>/scripts/wt.py prune-merged --base main
+python3 <skill>/scripts/wt.py prune-merged --base main [--base dev] [--remote] [--dry-run]
 python3 <skill>/scripts/ci_guard.py                 # will a push start billed CI? exit 2 means ask first
 ```
 
@@ -35,7 +35,13 @@ Each worktree has an index (shown by `wt.py new` and `wt.py list`). When a dev s
 
 ### 2. Branch from the right base
 
-Start from the latest base branch: `git fetch` first, then `wt.py new <branch> --base origin/<base>` or the local base. Name branches by type: `feat/...`, `fix/...`, `refactor/...`, `docs/...`.
+Find the base with `python3 <skills>/pr-review/scripts/branch_policy.py --type <feature|fix|hotfix|...>`. Trunk-based repos use the default branch for everything. Gitflow-style repos (a `dev` or `develop` branch exists, maybe `next`) send features and fixes to `dev`, hotfixes to the default branch, and promote `dev -> next -> main` in release PRs. A roadmap's `GOAL.md` or a `.github/branches.yml` file can set the policy explicitly. When a roadmap node has a `target`, that wins.
+
+Start from the latest base: `git fetch` first, then `wt.py new <branch> --base origin/<base>` or the local base. Name branches by type: `feat/...`, `fix/...`, `hotfix/...`, `refactor/...`, `docs/...`, `release/...`.
+
+**Hotfix**: a fix that must reach the released branch now. Branch from the default branch, open the PR against it, and after it merges open back-merge PRs into the other integration branches (the `back_merge` list from `branch_policy.py`, for example `next` then `dev`), so the fix is not lost at the next release. A normal fix goes to `dev` and ships with the next release.
+
+**Release**: a PR from one stage to the next (`dev -> next`, `next -> main`) with no new code in it. Its description lists the changes it promotes. In a roadmap it is a `type: release` node.
 
 When building a roadmap node, the node's brief is the spec. Stay inside its owned paths.
 
@@ -54,7 +60,7 @@ When you find a bug that exists on the base branch (not one your branch introduc
 
 1. **Confirm it on the base.** Write the smallest failing test. Run it on the base with `repro.py` from pr-review, or in a worktree of the base. A bug you cannot show on the base is not ready for a fix PR.
 2. **Decide.**
-   - **The cause is clear and the fix is small**: fix it in its own PR. `wt.py new fix/<slug> --base <base>`, add the failing test, fix, check, self-review, open the PR against the base branch. It ships on its own, without waiting for your feature.
+   - **The cause is clear and the fix is small**: fix it in its own PR. `wt.py new fix/<slug> --base <base>`, add the failing test, fix, check, self-review, open the PR against the branch the policy gives for a fix (or for a hotfix, when the bug is in released code and cannot wait for the next release). It ships on its own, without waiting for your feature.
    - **The cause is unclear or the fix is large**: do not guess. Write an issue (or a roadmap inbox entry) with the failing test and what you found, and tell the user.
 3. **Your feature branch.**
    - **It does not need the fix**: leave the fix out of the feature branch entirely. The two PRs merge in either order.
@@ -64,6 +70,10 @@ When you find a bug that exists on the base branch (not one your branch introduc
 ### 5. Check
 
 Run the project's checks in the worktree: `python3 <skills>/pr-review/scripts/checks.py <worktree> --run --install`. All of them must pass. When a check also fails on the base, say so in the PR and do not try to fix unrelated failures in this PR.
+
+### 5b. Performance pass
+
+When the change is a finished feature on code that runs often (render loops, request handlers, parsers, startup) or adds to what a browser downloads, run the perf-pass skill on it now, before the self-review: measure, try several options, keep the one with the best gain for its cost. Put its numbers in the PR's Cost section. Skip it for fixes, docs and changes with no measurable cost, and say so in the PR.
 
 ### 6. Self-review
 
@@ -100,7 +110,14 @@ When the base moves and the PR conflicts, rebase onto the base, resolve the conf
 
 ### 9. Clean up
 
-After a PR merges: `wt.py prune-merged --base <base>` removes worktrees of merged branches. It keeps branches with no commits yet and worktrees with uncommitted changes.
+After a PR merges, run `wt.py prune-merged` with every integration branch as a `--base` (for example `--base main --base next --base dev`, the branches in the policy's `promote` list). For each merged branch it removes the worktree and the local branch. It asks GitHub for the merged pull request, so squash and rebase merges are found too, and it falls back to commit ancestry without `gh`. It keeps branches with no commits yet, branches with commits newer than their merged PR, and worktrees with uncommitted changes.
+
+The remote branch:
+
+- If the repo deletes head branches on merge (GitHub setting "Automatically delete head branches"), nothing more is needed.
+- Otherwise add `--remote` to delete the remote branch of each merged PR. Deleting a remote branch is visible to others, so the first time in a repo, show the user what `--dry-run --remote` would delete and ask. Suggest turning the setting on with `gh repo edit --delete-branch-on-merge` (also a change others see, so ask).
+
+GitHub moves stacked PRs onto the next base when their base branch is deleted after a merge, so deleting a merged fix branch does not break a feature stacked on it.
 
 ## What the user sees
 

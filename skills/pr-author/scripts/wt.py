@@ -5,15 +5,21 @@ Usage:
   wt.py new <branch> [--base main] [--from <ref>]  # new branch in .worktrees/<branch>
   wt.py list                                       # worktrees with branch, base and state
   wt.py remove <branch> [--delete-branch]
-  wt.py prune-merged [--base main]                 # remove worktrees whose branch is merged
+  wt.py prune-merged [--base main --base dev] [--remote] [--all-branches] [--dry-run]
+                                                   # remove merged branches: worktree, local, remote
 
 Worktrees live in .worktrees/ at the repo root. The folder is added to
 .git/info/exclude, so it never shows up in `git status` and is never committed,
-while it stays easy to open in an editor. Each worktree gets an index that tools can use to pick free ports (for example
+while it stays easy to open in an editor.
+
+prune-merged asks GitHub for the branch's merged pull request when `gh` works,
+which finds squash and rebase merges, and falls back to commit ancestry. A
+branch with commits newer than its merged PR is kept. Each worktree gets an index that tools can use to pick free ports (for example
 port = 3000 + 10 * index). `wt.py new` and `wt.py list` print it.
 """
 import argparse
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -116,25 +122,85 @@ def remove(args):
     print(f"removed {args.branch}")
 
 
+def gh_merged_pr(branch):
+    """The merged pull request for a branch, from GitHub. Finds squash and rebase merges,
+    which plain git cannot see. Returns None when gh is missing or there is no merged PR."""
+    fake = os.environ.get("PR_AUTHOR_FAKE_GH")  # tests: a JSON file mapping branch -> PR
+    if fake:
+        return json.loads(Path(fake).read_text()).get(branch)
+    try:
+        r = subprocess.run(["gh", "pr", "list", "--state", "merged", "--head", branch, "--json",
+                            "number,baseRefName,headRefOid,mergedAt", "--limit", "1"],
+                           capture_output=True, text=True, timeout=30)
+        prs = json.loads(r.stdout) if r.returncode == 0 and r.stdout.strip() else []
+        return prs[0] if prs else None
+    except (OSError, ValueError, subprocess.TimeoutExpired):
+        return None
+
+
+def merged_into(branch, tip, bases, cwd):
+    """Where a branch was merged, and how we know: (base, source) or (None, None)."""
+    pr = gh_merged_pr(branch)
+    if pr:
+        # New commits after the merge are unmerged work.
+        if pr.get("headRefOid") and pr["headRefOid"] != tip:
+            return None, f"PR #{pr['number']} merged, but the branch has newer commits"
+        return pr["baseRefName"], f"PR #{pr['number']}"
+    for base in bases:
+        if git("rev-parse", "--verify", "--quiet", base, cwd=cwd, check=False) and \
+                subprocess.run(["git", "merge-base", "--is-ancestor", tip, base], cwd=cwd).returncode == 0:
+            return base, "commits are in " + base
+    return None, None
+
+
+def remote_has(branch, cwd):
+    out = git("ls-remote", "--heads", "origin", branch, cwd=cwd, check=False)
+    return bool(out.strip())
+
+
 def prune_merged(args):
     repo = root()
+    bases = args.base or ["main"]
+    candidates = []
     for w in worktrees():
         p = Path(w["worktree"])
         branch = w.get("branch", "").replace("refs/heads/", "")
-        if p.parent != repo / ".worktrees" or not branch or branch == args.base:
+        if p.parent == repo / ".worktrees" and branch and branch not in bases:
+            candidates.append((branch, p))
+    if args.all_branches:
+        listed = {b for b, _ in candidates}
+        for b in git("branch", "--format=%(refname:short)").splitlines():
+            if b not in listed and b not in bases and b != git("branch", "--show-current"):
+                candidates.append((b, None))
+
+    for branch, p in candidates:
+        tip = git("rev-parse", branch)
+        start = meta(p).get("created_at") if p else None
+        if tip == start:  # no commits of its own yet: new work, not merged work
             continue
-        tip, start = git("rev-parse", "HEAD", cwd=p), meta(p).get("created_at")
-        # A branch with no commits of its own is new work, not merged work.
-        if tip == start:
+        base, how = merged_into(branch, tip, bases, repo)
+        if not base:
+            if how:
+                print(f"kept {branch}: {how}")
             continue
-        merged = subprocess.run(["git", "merge-base", "--is-ancestor", tip, args.base],
-                                cwd=p).returncode == 0
-        if merged:
-            if git("status", "--porcelain", cwd=p, check=False):
-                print(f"kept {branch}: merged, but has uncommitted changes")
-                continue
-            git("worktree", "remove", str(p))
-            print(f"removed {branch} (merged into {args.base})")
+        if p and git("status", "--porcelain", cwd=p, check=False):
+            print(f"kept {branch}: merged into {base} ({how}), but has uncommitted changes")
+            continue
+        actions = []
+        if p:
+            actions.append("worktree")
+            if not args.dry_run:
+                git("worktree", "remove", str(p))
+        actions.append("local branch")
+        if not args.dry_run:
+            # -D is safe here: the merge is confirmed by GitHub or by ancestry.
+            git("branch", "-D", branch)
+        if args.remote and remote_has(branch, repo):
+            actions.append("remote branch")
+            if not args.dry_run:
+                git("push", "--quiet", "origin", "--delete", branch)
+        verb = "would remove" if args.dry_run else "removed"
+        print(f"{verb} {branch} ({', '.join(actions)}): merged into {base} ({how})")
     git("worktree", "prune")
 
 
@@ -152,7 +218,12 @@ def main():
     r.add_argument("--delete-branch", action="store_true")
     r.add_argument("--force", action="store_true")
     p = sub.add_parser("prune-merged")
-    p.add_argument("--base", default="main")
+    p.add_argument("--base", action="append",
+                   help="integration branch to check against; repeat for several (default main)")
+    p.add_argument("--remote", action="store_true", help="also delete the branch on origin")
+    p.add_argument("--all-branches", action="store_true",
+                   help="also local branches without a worktree")
+    p.add_argument("--dry-run", action="store_true")
     args = ap.parse_args()
     {"new": new, "list": list_, "remove": remove, "prune-merged": prune_merged}[args.cmd](args)
 

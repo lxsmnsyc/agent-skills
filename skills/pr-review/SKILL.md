@@ -25,6 +25,7 @@ All scripts are in `scripts/` and need only Python 3 and git (plus `gh` for GitH
 ```bash
 python3 <skill>/scripts/pr_info.py 42                       # PR facts, type hint, maintainer, CI, roadmap nodes
 python3 <skill>/scripts/pr_info.py --local --base main --head fix/x
+python3 <skill>/scripts/branch_policy.py --type feature --base main    # does this kind of change belong on that base?
 python3 <skill>/scripts/worktrees.py prepare --pr 42         # base and head side by side in .git/review-worktrees/
 python3 <skill>/scripts/checks.py <dir> [--run] [--install]  # detect and run lint, typecheck, build, tests
 python3 <skill>/scripts/repro.py <base> <head> --copy <test> -- <command>   # fails on base, passes on head?
@@ -39,6 +40,8 @@ Work in the review worktrees, never in the user's own checkout. The user may be 
 ### 1. Gather
 
 Run `pr_info.py`. Read the title, body, linked issues and the diff (`gh pr diff` or `git diff <merge-base>..<head>`). Decide the type: **fix**, **feature**, or **other** (refactor, docs, dependency update, chore). The type hint is a starting point; the diff decides. A PR that does two things is two reviews, and the comment should say it would be easier to merge as two PRs.
+
+Check the base. `pr_info.py` reports `expected_base` and `base_ok` from the repo's branch policy (`branch_policy.py`): trunk-based repos send everything to the default branch, while gitflow-style repos send features and fixes to `dev` (or `develop`), hotfixes to the default branch, and promote `dev -> next -> main`. A PR against the wrong base is a blocking finding, because merging it would ship work to the wrong stage. The fix is quick: `gh pr edit <n> --base <expected>`. A hotfix against the default branch also needs back-merge PRs into the other integration branches; check they exist or are planned.
 
 Check the repo's visibility. On a private repo, never trigger, re-run or wait on GitHub Actions: CI minutes are billed. Run the checks locally instead. Reading existing check results with `gh pr checks` is fine.
 
@@ -110,6 +113,9 @@ The approval goes to the maintainer that `pr_info.py` reports:
 In local mode, post nothing. Return the findings and the verdict to the caller.
 
 ### 8. Clean up
+
+The reviewer only removes its own review worktrees. It never deletes the PR's branch, locally or on the remote: that belongs to the author, who prunes it after the merge (the pr-author skill does this).
+
 
 Run `worktrees.py cleanup --all`. Copy its output line into the final summary as it is printed (`cleanup: no review worktrees left`). If it lists worktrees that are still registered, say so instead of reporting the cleanup as done.
 

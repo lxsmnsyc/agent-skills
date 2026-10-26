@@ -45,6 +45,8 @@ Give numbers. A cost without a number is an opinion.
 | Data and migrations | New migrations, changed formats, saved state. Can it roll back? Does old data still load? |
 | Maintenance | New files, new concepts a reader must learn, new external services. |
 
+When the PR touches a hot path or the bundle and its description has no numbers, ask for them, or measure them with the perf-pass skill's `bench.py` and `size_diff.py`. A change that is slower or bigger than the base without saying so is a should-fix finding.
+
 Compare the cost against the value. A 2kB increase for a fix to a common crash is cheap. A 2kB increase for an option nobody asked for is not.
 
 ## Risk

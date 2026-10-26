@@ -27,7 +27,7 @@ How to run nodes with several agents at once, ship their work, and keep the plan
 
 ## One pull request per node
 
-Each node ships as its own pull request against the main branch. This is the default because it keeps every piece of work mergeable on its own: nothing waits for a large integration branch to be finished.
+Each node ships as its own pull request against its target branch: the main branch in trunk-based repos, or the branch the policy in `GOAL.md` gives for the node's type in gitflow-style repos (for example features to `dev`). This is the default because it keeps every piece of work mergeable on its own: nothing waits for a large integration branch to be finished.
 
 What makes this safe:
 
@@ -38,7 +38,11 @@ What makes this safe:
 
 On a private repo, pushing a branch can start billed CI runs. Check `gh repo view --json visibility` before the first push. If the repo is private, ask the user whether to push, or to keep branches local, run the checks locally, and merge locally.
 
-A node is `done` when its pull request is merged. Track the pull request number in the brief's body (not in frontmatter) or in the outcome.
+A node is `done` when its pull request is merged into its target. Track the pull request number in the brief's body (not in frontmatter) or in the outcome.
+
+With several stages (`dev -> next -> main`), work moves on through release nodes: a `type: release` node is one promotion pull request (for example `dev` into `next`), gated for the user. When a release node into the last stage merges, the curator sets the nodes it shipped to `released`. Promotion carries everything that is on the source branch, not only the nodes the release was planned for. So before a release node runs, decide for each other open node targeting the same branch: merge it after the cut, put it behind a feature flag that stays off, or include it in the release on purpose. `plan.py check` lists those nodes as a warning on the release node.
+
+Hotfix nodes target the released branch directly, and the worker opens the back-merge pull requests into the other stages after the hotfix merges.
 
 Use an integration branch instead only when the user asks for it, or when the main branch must never contain partial work and flags are not an option. Then workers target `roadmap/<slug>`, and the user merges that branch at the end.
 

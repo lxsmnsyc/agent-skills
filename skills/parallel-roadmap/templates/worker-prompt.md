@@ -16,6 +16,6 @@ Then:
 8. Run the fast check from GOAL.md. Do not run the full check unless your brief says so; other agents need the shared resources.
 9. Write `nodes/<id>/outcome.md` from `<skill>/templates/outcome.md`. Later agents read only this file, so make it complete on its own.
 10. Do not change `status` in your brief. Commit everything on your branch with the message `<id>: <title>`.
-11. Open a pull request against `<base>` following the pr-author skill if it is installed, otherwise with `gh pr create`. The description links the node (`<root>/nodes/<id>/brief.md`). Do not merge it.
+11. Open a pull request against `<target>` (the node's target branch from `ready --json`, or the main branch) following the pr-author skill if it is installed, otherwise with `gh pr create`. The description links the node (`<root>/nodes/<id>/brief.md`). Do not merge it.
 
 Reply with: your branch name, the PR number, whether the acceptance criteria pass (or "already fulfilled"), and anything the orchestrator must decide (change requests, blockers, deviations).

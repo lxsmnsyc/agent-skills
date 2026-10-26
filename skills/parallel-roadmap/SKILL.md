@@ -39,7 +39,7 @@ A roadmap lives in the repo, so it is versioned with the code and survives devic
 
 Templates for each file are in `templates/`. Copy them; do not invent new fields, because `scripts/plan.py` reads the frontmatter.
 
-Status lives in exactly one place: the `status` field of each brief. Other documents link to the roadmap instead of restating status. Repos that track status in three places (a strategy doc, an ADR header and a proposal list) drift apart within weeks.
+Status lives in exactly one place: the `status` field of each brief. `done` means the node's pull request merged into its target branch. In repos with several stages (`dev -> next -> main`), `released` means the work reached the last one; the curator sets it when a release node merges. Other documents link to the roadmap instead of restating status. Repos that track status in three places (a strategy doc, an ADR header and a proposal list) drift apart within weeks.
 
 Use the repo's existing decision record system when there is one (for example `docs/decisions/NNNN-*.md`). Only create `<root>/decisions/` when the repo has nothing.
 
@@ -79,6 +79,7 @@ Before you plan, learn how the repo already plans. Look for:
 - Verification: the check command, how long it takes, and whether two copies can run at once (shared database containers, fixed ports).
 - Hot files that many features touch: route registries, config, barrel exports, the main plan document itself.
 - Resources that only one task can use at a time: load tests, benchmarks, a database container on a fixed port.
+- The branching model. Run pr-review's `branch_policy.py` (or look for `dev`, `develop`, `next`, `release/*` branches and CONTRIBUTING). When the repo uses more than one integration branch, write the policy into the `branches:` frontmatter of `GOAL.md`, so every node gets the right target.
 - Whether the repo is private (`gh repo view --json visibility`). Pushing branches to a private repo can trigger billed CI. If the user does not want that, workers keep branches local and checks run locally.
 
 When importing a prose plan, keep a link from each node back to the paragraph it came from. Do not rewrite the source documents.
@@ -103,8 +104,9 @@ For each node, write `nodes/<id>/brief.md` with priority, typed dependencies, ow
 2. Name every shared interface as a contract in `contracts/`, with `status: draft` and `defined_by` set to the node that will freeze it.
 3. Put contract-freezing nodes, spikes for risky unknowns, and changes to hot shared files in the first wave.
 4. Set a priority on every node by weighing its value to the project against its size (see "Priority" in `references/decomposition.md`): `must` is needed now, `should` is important but the goal can be reached without it, `could` is worth doing when capacity is free, and `later` is parked and not scheduled. Propose the priorities, then let the user confirm them, because value is the user's call.
-5. Reserve global numbers up front with `reserves:` (for example `reserves: [migration 00043, adr 0067]`). The script fails when two nodes reserve the same one. Tag nodes that need a single-use resource with `exclusive:`, for example `exclusive: [loadtest]`.
-6. Run `plan.py <root> status`. Fix every error. Then work on the result:
+5. Give each node a `type` (feature, fix, hotfix, refactor, docs, release, ...). With a branch policy in `GOAL.md`, the type decides the branch its pull request targets, and `plan.py` shows it as `-> dev`. Set `target` only to override. Promotions between stages are `type: release` nodes with `from` and `target` (for example `from: dev`, `target: next`), gated, and depending on the work they ship; `plan.py check` warns when a release node does not wait for open work on its `from` branch.
+6. Reserve global numbers up front with `reserves:` (for example `reserves: [migration 00043, adr 0067]`). The script fails when two nodes reserve the same one. Tag nodes that need a single-use resource with `exclusive:`, for example `exclusive: [loadtest]`.
+7. Run `plan.py <root> status`. Fix every error. Then work on the result:
    - A long critical path means too many `hard` edges. Challenge them, or split the nodes on the path.
    - A node deferred because of an owned path overlap, or a "shared ... plan the merge order" note, means several nodes edit the same file. Prefer splitting that file by feature in an early, behavior-preserving node, so each later node owns its own module (see "Split hot files by feature first" in `references/decomposition.md`). Otherwise accept the serialization or plan the merge order.
    - An XL node must be split.
@@ -141,7 +143,7 @@ Read `references/orchestration.md` before this step. In short:
 
 1. `plan.py <root> verify` closes todo nodes whose acceptance already holds. Then `plan.py <root> ready --json` lists the nodes to start.
 2. Set each one to `status: active` and commit that. The orchestrator is the only writer of `status`.
-3. Spawn one agent per node with `isolation: worktree`, using `templates/worker-prompt.md` and the model the script suggests. Spawn them in one message so they run at the same time. Each worker first checks whether its work already exists, then builds and opens one pull request against the main branch.
+3. Spawn one agent per node with `isolation: worktree`, using `templates/worker-prompt.md` and the model the script suggests. Spawn them in one message so they run at the same time. Each worker first checks whether its work already exists, then builds and opens one pull request against the node's target branch (`target` in `ready --json`, or the main branch when there is no branch policy).
 4. Each pull request gets a fresh-context review (the pr-review skill), passes the repo's checks, and goes to the maintainer for approval. Agents do not approve their own work. A node is `done` when its pull request merges. Run the curator (phase 7) at checkpoints.
 5. Stop at gates. Then go back to step 1.
 
