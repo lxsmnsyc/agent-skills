@@ -1,0 +1,6 @@
+schema_version: "1.1"
+name: trunk-changesets-release
+expected_outcome: |
+  GOAL.md declares that the repo publishes from main with changesets (a `release:` map with publish: changesets) and orders the milestones 0.4 then 0.5. Signup and login are tagged 0.4 and password-reset 0.5. A gated release node for 0.4 has milestone 0.4 and waits for signup and login. plan.py check passes, and plan.py holds password-reset for the 0.4 release. The response tells the user not to merge PR #41 until 0.4 ships, keeping its changeset. The active login brief is not edited, and nothing is merged.
+context:
+  scaffold_script: place-files.sh

@@ -6,6 +6,7 @@ How to run nodes with several agents at once, ship their work, and keep the plan
 
 - Roles
 - One pull request per node
+- Releasing from one branch
 - Rolling and waves
 - The loop
 - Keeping the orchestrator's context small
@@ -45,6 +46,29 @@ A node is `done` when its pull request is merged into its target. Track the pull
 With several stages (`dev -> next -> main`), work moves on through release nodes: a `type: release` node is one promotion pull request (for example `dev` into `next`), gated for the user. When a release node into the last stage merges, the curator sets the nodes it shipped to `released`. Promotion carries everything that is on the source branch, not only the nodes the release was planned for. So before a release node runs, decide for each other open node targeting the same branch: merge it after the cut, put it behind a feature flag that stays off, or include it in the release on purpose. `plan.py check` lists those nodes as a warning on the release node. When the release node has a `milestone`, `check` also lists the open nodes of that milestone that it does not wait for. Waiting through other nodes counts. So a planned node cannot miss the release.
 
 Hotfix nodes target the released branch directly, and the worker opens the back-merge pull requests into the other stages after the hotfix merges.
+
+## Releasing from one branch
+
+Many repos merge every pull request into the main branch and publish from it, with changesets or a tag. Then everything merged ships with the next release, whether it was planned for that release or not. Declare this in `GOAL.md`:
+
+```yaml
+milestones: [core, skill, ui]
+release:
+  publish: changesets     # or tag: what cuts a release
+  paths: [packages/**]    # what ships; work outside these paths never waits
+  fence: merge            # merge (the default): build now, hold the merge. start: do not start
+```
+
+Each release is a `type: release` node with a `milestone`, gated, without `from` or `target`. It ships its own milestone and every earlier milestone that has no release node of its own. So a release on `skill` above ships `core` and `skill`. `plan.py check` warns about open nodes of those milestones that the release does not wait for.
+
+Until the first open release is done, nodes of later milestones that touch the release paths are held:
+
+- `fence: merge`: they can start, but `plan.py can-merge` refuses them with "waits for release <id>". Hand those pull requests to the maintainer with that reason, and in maintainer mode, tell the maintainer to hold them too. Building early keeps the work in parallel, at the cost of a rebase after the release.
+- `fence: start`: `plan.py ready` leaves them out until the release is done.
+
+`ready --json` gives `held_by` for each held node, and `publish` for a release node. Do not spawn a worker for a release node with `publish: changesets`. Stop at its gate: link the release pull request the changesets bot keeps open, and list the nodes it ships. The maintainer merges it. When it merges, set the release node to `done`, and the curator sets the shipped nodes to `released`. The next release becomes the fence, and the held pull requests can merge after a rebase.
+
+Work that must ship early in spite of its milestone moves to the earlier milestone, or goes behind a flag that stays off.
 
 Use an integration branch instead only when the user asks for it, or when the main branch must never contain partial work and flags are not an option. Then workers target `roadmap/<slug>`, and the user merges that branch at the end.
 

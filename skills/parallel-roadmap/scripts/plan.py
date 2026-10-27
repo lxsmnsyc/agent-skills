@@ -2,6 +2,7 @@
 """Validate a parallel roadmap, schedule it into waves, and assemble node context.
 
 Reads <root>/nodes/*/brief.md and <root>/contracts/*.md frontmatter. Stdlib only.
+With `release:` in GOAL.md, nodes of later milestones are held until the first open release ships.
 
 Usage:
   plan.py <root> status            # check + waves + critical path (default)
@@ -198,7 +199,7 @@ def load(root):
             "target": fm.get("target") or None,
             "from": fm.get("from") or None,
             "outline": bool(fm.get("outline")),
-            "milestone": fm.get("milestone") or None,
+            "milestone": str(fm["milestone"]) if fm.get("milestone") not in (None, "") else None,
             "archived": False,
         }
     for nid, entry in read_archive(root).items():
@@ -262,6 +263,77 @@ def load_policy(root):
     except ValueError:
         return None
     return pol if isinstance(pol, dict) and pol else None
+
+
+FENCES = {"merge", "start"}
+
+
+def release_settings(root):
+    """The `release:` map from GOAL.md frontmatter, for repos that publish from one branch, or None."""
+    raw = goal_settings(root).get("release")
+    if not isinstance(raw, dict) or not raw.get("publish"):
+        return None
+    fence = str(raw.get("fence") or "merge").strip().lower()
+    return {"publish": str(raw["publish"]),
+            "paths": [str(p) for p in _as_list(raw.get("paths"))],
+            "fence": fence if fence in FENCES else "merge"}
+
+
+def release_nodes(nodes, milestones):
+    """Release nodes with a milestone from the list, in milestone order."""
+    order = {m: i for i, m in enumerate(milestones or [])}
+    return sorted((k for k, n in live(nodes).items()
+                   if n["type"] == "release" and n["milestone"] in order),
+                  key=lambda k: (order[nodes[k]["milestone"]], k))
+
+
+def ships_in(nodes, milestones):
+    """Milestone -> the release node that ships it: the first release at or after it in order.
+
+    A milestone with no release node of its own ships with the next one, so one release can
+    carry several milestones.
+    """
+    order = {m: i for i, m in enumerate(milestones or [])}
+    rels = release_nodes(nodes, milestones)
+    out = {}
+    for m, i in order.items():
+        for r in rels:
+            if order[nodes[r]["milestone"]] >= i:
+                out[m] = r
+                break
+    return out
+
+
+def next_release(nodes, milestones):
+    """The first open release node in milestone order, or None."""
+    for r in release_nodes(nodes, milestones):
+        if nodes[r]["status"] not in DONE:
+            return r
+    return None
+
+
+def release_fence(nodes, milestones, release):
+    """Open nodes held back until an earlier release ships: node id -> release node id.
+
+    Only for repos that publish from one branch (`release:` in GOAL.md). Everything merged
+    there ships with the next release, so a node of a later milestone that touches the
+    published paths waits for the first open release.
+    """
+    if not release or not milestones:
+        return {}
+    order = {m: i for i, m in enumerate(milestones)}
+    first = next_release(nodes, milestones)
+    if not first:
+        return {}
+    cut = order[nodes[first]["milestone"]]
+    out = {}
+    for k, n in live(nodes).items():
+        if n["type"] == "release" or n["status"] in DONE or order.get(n["milestone"], -1) <= cut:
+            continue
+        paths = n["owns"] + n["shared"]
+        if not release["paths"] or any(paths_overlap(a, b) for a in paths for b in release["paths"]):
+            out[k] = first
+    return out
 
 
 def apply_targets(nodes, policy):
@@ -455,7 +527,7 @@ def find_cycle(ids, preds):
 # Commands
 # ---------------------------------------------------------------------------
 
-def check(nodes, contracts, load_errors, policy=None, milestones=None):
+def check(nodes, contracts, load_errors, policy=None, milestones=None, release=None):
     errors, warnings = list(load_errors), []
     if milestones:
         for nid, n in live(nodes).items():
@@ -470,26 +542,36 @@ def check(nodes, contracts, load_errors, policy=None, milestones=None):
             if n.get("target_eff") and n["target_eff"] not in known:
                 warnings.append(f"node {nid}: targets '{n['target_eff']}', which is not a branch "
                                 f"in the policy ({', '.join(sorted(known))})")
-        for nid, n in live(nodes).items():
-            if n["type"] != "release":
-                continue
-            if not (n["from"] and n["target"]):
-                errors.append(f"node {nid}: a release node needs `from` and `target` branches")
-                continue
-            preds = all_preds(n, live(nodes), contracts)
+    ships = ships_in(nodes, milestones)
+    for nid, n in live(nodes).items():
+        if n["type"] != "release":
+            continue
+        if not (n["from"] and n["target"]) and not release:
+            errors.append(f"node {nid}: a release node needs `from` and `target` branches, "
+                          f"or `release:` in GOAL.md when the repo publishes from one branch")
+            continue
+        preds = all_preds(n, live(nodes), contracts)
+        if n["from"] and n["target"]:
             missing = sorted(k for k, o in live(nodes).items()
                              if k != nid and o.get("target_eff") == n["from"]
                              and o["status"] not in DONE and k not in preds)
             if missing:
                 warnings.append(f"node {nid}: releases {n['from']} -> {n['target']} but does not wait "
                                 f"for open work on {n['from']}: {', '.join(missing)}")
-            unshipped = sorted(k for k, o in live(nodes).items()
-                               if k != nid and n["milestone"] and o["milestone"] == n["milestone"]
-                               and o["type"] != "release" and o["status"] not in DONE
-                               and k not in preds)
-            if unshipped:
-                warnings.append(f"node {nid}: releases milestone {n['milestone']} but does not wait "
-                                f"for its open nodes: {', '.join(unshipped)}")
+        elif not n["milestone"] or n["milestone"] not in (milestones or []):
+            warnings.append(f"node {nid}: a release from one branch needs a `milestone` from GOAL.md "
+                            f"milestones, so plan.py knows what it ships")
+        carried = {m for m, r in ships.items() if r == nid} or {n["milestone"]}
+        unshipped = sorted(k for k, o in live(nodes).items()
+                           if k != nid and n["milestone"] and o["milestone"] in carried
+                           and o["type"] != "release" and o["status"] not in DONE
+                           and k not in preds)
+        if unshipped:
+            names = [m for m in (milestones or []) if m in carried] or sorted(carried)
+            warnings.append(f"node {nid}: releases milestone {', '.join(names)} but does not "
+                            f"wait for its open nodes: {', '.join(unshipped)}")
+    if release and not milestones:
+        warnings.append("GOAL.md sets `release:` but no `milestones:`; releases are planned per milestone")
     for nid, n in nodes.items():
         where = f"node {nid}"
         if n["dirname"] != nid:
@@ -684,8 +766,11 @@ def refine_due(nodes, contracts, horizon, max_parallel=DEFAULT_MAX_PARALLEL):
     return [k for w in s["waves"][:horizon] for k in w if nodes[k]["outline"]]
 
 
-def ready(nodes, contracts, upto="could"):
-    """Nodes that can start now, most urgent first, then longest remaining path."""
+def ready(nodes, contracts, upto="could", held=None):
+    """Nodes that can start now, most urgent first, then longest remaining path.
+
+    Nodes in `held` (from release_fence with `fence: start`) wait for their release.
+    """
     lv = live(nodes)
     eff = effective_priority(nodes, contracts)
     preds = {k: start_preds(n, lv, contracts) for k, n in lv.items()}
@@ -694,7 +779,7 @@ def ready(nodes, contracts, upto="could"):
     level, _ = levels(lv, succs, pending)
     out = [k for k, n in lv.items()
            if n["status"] == "todo" and n["size"] != "XL" and not n["outline"]
-           and eff[k][0] <= PRIORITIES[upto]
+           and eff[k][0] <= PRIORITIES[upto] and k not in (held or {})
            and all(lv[p]["status"] in DONE for p in preds[k])]
     return sorted(out, key=lambda k: (eff[k][0], -level[k], k))
 
@@ -771,7 +856,7 @@ def goal_heading(root):
     return title, outcome
 
 
-def overview(root, nodes, contracts, s, milestones, warnings):
+def overview(root, nodes, contracts, s, milestones, warnings, release=None, held=None):
     """A readable summary of the plan, as markdown."""
     lv = live(nodes)
     wave_of = {k: i + 1 for i, w in enumerate(s["waves"]) for k in w}
@@ -788,6 +873,14 @@ def overview(root, nodes, contracts, s, milestones, warnings):
         out.append(f"**Must line:** all must work placed by wave {s['priority_waves']['must']}")
     if s["critical_path"]:
         out.append(f"**Critical path:** {' -> '.join(s['critical_path'])}")
+    held = held or {}
+    r = next_release(nodes, milestones) if release else None
+    if r:
+        carried = [m for m, x in ships_in(nodes, milestones).items() if x == r]
+        left = sum(1 for n in lv.values() if n["milestone"] in carried
+                   and n["type"] != "release" and n["status"] not in DONE)
+        waiting = sum(1 for x in held.values() if x == r)
+        out.append(f"**Next release:** {r} ({', '.join(carried)}): {left} open, {waiting} held until it ships")
     due = [k for w in s["waves"][:DEFAULT_HORIZON] for k in w if lv[k]["outline"]]
     if due:
         out.append(f"**Refine next:** {', '.join(due)}")
@@ -803,6 +896,8 @@ def overview(root, nodes, contracts, s, milestones, warnings):
             bits.append(f"-> {n['target_eff']}")
         if n["outline"]:
             bits.append("outline")
+        if k in held:
+            bits.append(f"held for {held[k]}")
         if n["status"] in ("active", "released"):
             bits.append(n["status"])
         elif n["status"] not in DONE:
@@ -877,7 +972,7 @@ def review_mode(n, setting="auto"):
 
 
 def can_merge(nid, nodes, policy, review_clean, checks_pass, proof, files, ci_guard="safe",
-              review="fresh", fresh_review=False):
+              review="fresh", fresh_review=False, held_by=None):
     """Decide whether the orchestrator may merge a node's pull request itself.
 
     Returns {"verdict": "auto" | "maintainer", "reasons": [...]}. Every reason is a
@@ -910,6 +1005,8 @@ def can_merge(nid, nodes, policy, review_clean, checks_pass, proof, files, ci_gu
         reasons.append("the checks did not pass")
     if (n["type"] in ("fix", "hotfix")) and not proof:
         reasons.append("a fix needs proof: fails on base, passes on head")
+    if held_by:
+        reasons.append(f"waits for release {held_by}: merging now would ship it in that release")
     if ci_guard != "safe":
         reasons.append("merging would start billed CI on a private repo (ci_guard says ask)")
     allowed = n["owns"] + n["shared"]
@@ -1121,7 +1218,9 @@ def main():
     policy = load_policy(args.root)
     apply_targets(nodes, policy)
     milestones = goal_milestones(args.root)
-    errors, warnings = check(nodes, contracts, load_errors, policy, milestones)
+    release = release_settings(args.root)
+    errors, warnings = check(nodes, contracts, load_errors, policy, milestones, release)
+    held = release_fence(nodes, milestones, release)
 
     if args.command == "check":
         if args.json:
@@ -1172,7 +1271,8 @@ def main():
                  [f for f in args.files.split(",") if f])
         r = can_merge(args.node, nodes, merge_policy(args.root), args.review_clean,
                       args.checks_pass, args.proof, files, args.ci_guard,
-                      review_mode(nodes[args.node], review_setting(args.root)), args.fresh_review)
+                      review_mode(nodes[args.node], review_setting(args.root)), args.fresh_review,
+                      held.get(args.node))
         if args.json:
             print(json.dumps(r, indent=2))
         else:
@@ -1242,7 +1342,8 @@ def main():
         return
 
     if args.command == "ready":
-        ids = ready(nodes, contracts, args.upto)
+        ids = ready(nodes, contracts, args.upto,
+                    held if release and release["fence"] == "start" else None)
         rs = review_setting(args.root)
         if args.json:
             print(json.dumps([{
@@ -1253,12 +1354,16 @@ def main():
                 "pr_title": pr_title(nodes[k]),
                 "model": model_for(nodes[k]), "gate": nodes[k]["gate"], "mode": mode,
                 "review": review_mode(nodes[k], rs),
+                "held_by": held.get(k),
+                "publish": release["publish"] if release and nodes[k]["type"] == "release"
+                and not nodes[k]["from"] else None,
                 "brief": rel(nodes[k]["dir"] / "brief.md"),
                 "context": [f["path"] for f in context_files(args.root, k, nodes, contracts)],
             } for k in ids], indent=2))
         else:
             for k in ids:
-                print(f"{k}  [{nodes[k]['size']}, {model_for(nodes[k])}, {review_mode(nodes[k], rs)} review]  {nodes[k]['title']}")
+                hold = f", held for {held[k]}" if k in held else ""
+                print(f"{k}  [{nodes[k]['size']}, {model_for(nodes[k])}, {review_mode(nodes[k], rs)} review{hold}]  {nodes[k]['title']}")
             if not ids:
                 print("nothing ready")
             elif mode == "sequential":
@@ -1270,7 +1375,7 @@ def main():
         order = {m: i for i, m in enumerate(milestones)}
         s["groups"] = dict(sorted(s["groups"].items(), key=lambda kv: order.get(kv[0], len(order))))
     if args.command == "overview":
-        print(overview(args.root, nodes, contracts, s, milestones, warnings), end="")
+        print(overview(args.root, nodes, contracts, s, milestones, warnings, release, held), end="")
         return
     if args.json:
         print(json.dumps({"errors": errors, "warnings": warnings, **s}, indent=2))
@@ -1281,6 +1386,8 @@ def main():
         for n in nodes.values():
             counts[n["status"]] = counts.get(n["status"], 0) + 1
         print("nodes: " + ", ".join(f"{v} {k}" for k, v in sorted(counts.items())))
+        for r in sorted(set(held.values())):
+            print(f"held for release {r}: " + ", ".join(sorted(k for k, x in held.items() if x == r)))
     print_schedule(s, nodes)
 
 

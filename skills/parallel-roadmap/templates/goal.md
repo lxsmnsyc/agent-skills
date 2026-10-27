@@ -17,6 +17,12 @@ branches:
   # fix: dev
   # hotfix: main
   # promote: dev -> next -> main
+release:
+  # Only for repos that publish from one branch. Leave publish empty otherwise.
+  # Each release is a type: release node with a milestone; later milestones wait for it.
+  publish:              # changesets | tag
+  paths: []             # what ships, e.g. [packages/**]; empty means everything
+  fence: merge          # merge: build now, hold the merge. start: do not start
 ---
 
 # <Roadmap title>
