@@ -276,6 +276,26 @@ class PlanTest(unittest.TestCase):
         (self.root / "GOAL.md").write_text("---\nrun: sequential\n---\n# G\n")
         self.assertEqual(plan.run_mode(self.root, 4), "sequential")
 
+    def test_review_mode(self):
+        node(self.root, "small", size="S", owns="[a/**]")
+        node(self.root, "mid", size="M", owns="[b/**]")
+        node(self.root, "notes", size="M", owns="[c/**]", type="docs")
+        node(self.root, "gated", size="S", owns="[d/**]", gate="true")
+        nodes, _, _ = self.load()
+        modes = {k: plan.review_mode(nodes[k]) for k in nodes}
+        self.assertEqual(modes, {"small": "self", "mid": "fresh", "notes": "self", "gated": "fresh"})
+        self.assertEqual(plan.review_mode(nodes["mid"], "self"), "self")
+        self.assertEqual(plan.review_setting(self.root), "auto")
+        (self.root / "GOAL.md").write_text("---\nreview: fresh\n---\n# G\n")
+        self.assertEqual(plan.review_setting(self.root), "fresh")
+
+    def test_self_review_blocks_auto_merge(self):
+        nodes, pol = self.merge_setup()
+        r = plan.can_merge("f", nodes, pol, True, True, False, ["src/f/a.ts"], review="self")
+        self.assertEqual(r["verdict"], "maintainer")
+        r = plan.can_merge("f", nodes, pol, True, True, False, ["src/f/a.ts"], review="self", fresh_review=True)
+        self.assertEqual(r["verdict"], "auto")
+
     def test_archive_only_what_nothing_open_needs(self):
         contract(self.root, "api", status="frozen")
         node(self.root, "a", size="M", owns="[a/**]", status="done", milestone="q1", provides="[api]")

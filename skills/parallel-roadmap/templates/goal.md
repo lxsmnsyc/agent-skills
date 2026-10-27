@@ -1,6 +1,8 @@
 ---
 milestones: []          # optional, in order, e.g. [0.4, 0.5, 1.0] or [2026-q4, 2027-q1]
 run: parallel           # sequential: one worker at a time, worktrees optional
+review: auto            # who reviews node PRs. fresh: a new agent. self: the worker.
+                        # auto: self for S, docs and chore nodes, fresh for the rest
 merge:
   # Who merges node pull requests. maintainer (the default): every PR waits for the user.
   # auto: the orchestrator merges PRs that pass `plan.py can-merge`; the rest still wait.

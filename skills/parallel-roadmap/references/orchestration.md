@@ -8,6 +8,7 @@ How to run nodes with several agents at once, ship their work, and keep the plan
 - One pull request per node
 - Rolling and waves
 - The loop
+- Keeping the orchestrator's context small
 - Spawning a worker
 - Sequential mode
 - Already fulfilled work
@@ -61,9 +62,17 @@ Waves printed by `plan.py status` are a forecast in both modes. The decision to 
 3. `python3 <skill>/scripts/plan.py <root> ready --json`. The list is sorted by priority, then by critical path. Take up to `--max-parallel` nodes from the top.
 4. Set each one to `status: active` and commit that to the main branch (or the integration branch). Keep the commit to the brief files only.
 5. Spawn the workers in a single message so they run at the same time (see "Spawning a worker"). In sequential mode, spawn only the first one.
-6. When a worker returns, send its pull request to review (see "Merging and verification").
+6. When a worker returns, act on its reply (see "Merging and verification"). In `self` mode the worker has already reviewed and checked it. In `fresh` mode, spawn the reviewer.
 7. When the pull request merges, set `status: done`, and run the curator at checkpoints.
-8. Stop at gates (see "Gates"). Otherwise go to step 1.
+8. Stop at gates (see "Gates"). At checkpoints, end the session (see "Keeping the orchestrator's context small"). Otherwise go to step 1.
+
+## Keeping the orchestrator's context small
+
+The orchestrator is usually the most expensive agent in a run. It reads its whole context again on every turn, and every worker reply, diff, log and check output it reads stays there. In one measured run of 33 nodes, it was more than half of all tokens, with a median context of about 470k.
+
+- **Work from replies and script output.** Do not read workers' diffs, logs or full outcomes in this session. The curator reads outcomes. `plan.py` answers the questions about paths, readiness and merge rules.
+- **Delegate investigation.** When a reply raises something that needs reading code, spawn an agent and ask for a short answer.
+- **End the session at checkpoints.** Every piece of state is in the repo: statuses, outcomes, logs and wave reports. After each curator pass, or after about five merged pull requests, check that no worker is still running, commit the roadmap files, and make sure `reviews/wave-<n>.md` says what is active and what waits on what. Then tell the user to start a new session (`/clear`) with "Continue the roadmap in `<root>`". The new session starts from `plan.py <root> status` and the last wave report.
 
 ## Spawning a worker
 
@@ -102,14 +111,16 @@ A passing `verify` command is a signal, not proof. Read the code before closing 
 
 ## Merging and verification
 
-For each finished worker (closing a node also means ticking its acceptance boxes in the brief, or saying which ones the existing code covers):
+Each pull request is reviewed once and checked once, in the review mode `ready --json` gave it (`review`, from the `review:` setting in `GOAL.md`). In `self` mode the worker reviews its own branch and runs the full check. In `fresh` mode the orchestrator spawns one reviewer, because a worker running as a subagent cannot spawn agents. The orchestrator works from the replies. For each finished worker (closing a node also means ticking its acceptance boxes in the brief, or saying which ones the existing code covers):
 
-1. Read its `outcome.md`. If it reports a blocker or an unresolved deviation, resolve it before review.
-2. Check that the diff stays inside its owned paths and its node folder. Changes outside owned paths are the main source of merge conflicts and hidden coupling. Either accept them and note them in the outcome, or send the worker back.
-3. Run the review. Spawn a fresh-context reviewer (the pr-review skill) on the pull request. Fix what it finds, for at most two rounds.
-4. Run the checks required by the repo: lint, typecheck, build, tests. On a private repo, run them locally and do not trigger CI.
+1. If the reply reports a blocker, an unresolved deviation or a change request, resolve it first. When that needs reading code or logs, spawn an agent to do it and keep only its answer (see "Keeping the orchestrator's context small").
+2. Check the owned paths with the script instead of reading the diff: `git diff --name-only <base>...<branch> | plan.py <root> can-merge <id> --files -`. Any "changes outside the node's paths" reason matters in every merge mode. Changes outside owned paths are the main source of merge conflicts and hidden coupling. Either accept them and note them in the outcome, or send the worker back.
+3. Review once. In `fresh` mode, spawn one reviewer with the pr-review skill in local mode, and give it only the repo, the base and the branch. Send its blocking and should-fix findings to the worker with SendMessage, since its context is still loaded. Ask the reviewer for a second round only after the fixes, and stop after two rounds. In `self` mode, use the worker's review and do not spawn a reviewer, unless auto-merge should apply to the node (see "Auto-merge").
+4. Do not run the checks again. Use the result from the review: the fresh reviewer runs them, and in self mode the worker does. Run them again only when the branch changed after the review, for example after a rebase. On a private repo, run them locally and do not trigger CI.
 5. Decide who merges (see "Auto-merge" below). Without an `auto` merge policy, hand the pull request to the maintainer. Never approve it yourself.
 6. If a merged pull request breaks the main branch, revert it and reopen the node with the failure in its log.
+
+Self-review costs less because no new agent has to load the repo. A fresh reviewer cost about $1.20 per node in a measured run. But a worker tends to agree with its own reasoning. That is why `review: auto` keeps a fresh reviewer for everything except S, docs and chore nodes, and always for gates, contracts, releases and hotfixes. Set `review: fresh` in `GOAL.md` when the user wants a fresh reviewer on every node.
 
 Merge conflicts still happen. Resolve them in the worker's branch, by the worker or the orchestrator, then rerun the checks.
 
@@ -131,11 +142,11 @@ With `mode: auto`, the decision is the script's, not yours:
 
 ```bash
 git diff --name-only <base>...<branch> | \
-  python3 <skill>/scripts/plan.py <root> can-merge <id> --review-clean --checks-pass [--proof] \
+  python3 <skill>/scripts/plan.py <root> can-merge <id> --review-clean --checks-pass [--proof] [--fresh-review] \
     [--ci-guard ask] --files -
 ```
 
-Pass `--review-clean` only when the pr-review verdict had no blocking and no should-fix findings, `--checks-pass` only when lint, typecheck, build and tests passed on the branch rebased onto the current base, `--proof` only when a fix fails on the base and passes on the branch, and `--ci-guard ask` when pr-author's `ci_guard.py` says a merge would start billed CI. Exit code 0 (`auto`) means:
+Pass `--fresh-review` only when a fresh agent did the review. A node in self mode needs it, so a self-reviewed PR goes to the maintainer unless you run a fresh review first. Pass `--review-clean` only when the review verdict had no blocking and no should-fix findings, `--checks-pass` only when lint, typecheck, build and tests passed on the branch rebased onto the current base, `--proof` only when a fix fails on the base and passes on the branch, and `--ci-guard ask` when pr-author's `ci_guard.py` says a merge would start billed CI. Exit code 0 (`auto`) means:
 
 1. Merge: `gh pr merge <n> --squash --delete-branch` (or the policy's method).
 2. Run the checks on the updated base. If they fail, revert the merge in a new pull request at once, merge that revert (restoring a green base is always allowed), set the node back to `todo` with the failure in its log, and tell the user.
@@ -182,7 +193,7 @@ The user can waive gates. Record that in `GOAL.md` so later sessions know.
 
 ## Running a wave as a Workflow
 
-For long roadmaps, `scripts/wave.workflow.js` runs one wave: it spawns all workers in parallel, each in a worktree with its suggested model, then runs a curator agent over the results. In sequential mode (`sequential: true` in args) it runs the workers one after another, and `isolation: "none"` runs them in the current checkout instead of worktrees. The orchestrator still handles reviews, status changes and gates between waves, because the Workflow script cannot read or write files.
+For long roadmaps, `scripts/wave.workflow.js` runs one wave: it spawns all workers in parallel, each in a worktree with its suggested model, then runs a curator agent over the results. In sequential mode (`sequential: true` in args) it runs the workers one after another, and `isolation: "none"` runs them in the current checkout instead of worktrees. After each worker in `fresh` mode, it runs one reviewer and returns its findings with the worker's report. Self mode workers review their own branches. The orchestrator still sends findings back to workers, merges, and handles status changes and gates between waves, status changes and gates between waves, because the Workflow script cannot read or write files.
 
 Only use it when the user has asked for workflow orchestration, or when they invoked this skill to run waves:
 

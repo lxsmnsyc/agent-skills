@@ -14,7 +14,7 @@ Usage:
   plan.py <root> refine            # outline nodes close enough to break into briefs now
   plan.py <root> overview          # readable summary of the plan, grouped by milestone
   plan.py <root> archive [--apply]   # done nodes nothing open needs: remove folders, list in archive.md
-  plan.py <root> can-merge <id> --review-clean --checks-pass [--proof] --files - < changed.txt
+  plan.py <root> can-merge <id> --review-clean --checks-pass [--proof] [--fresh-review] --files - < changed.txt
                                    # may the orchestrator merge this node's PR itself? exit 0 = yes
 Options: --json, --max-parallel N (default 4; 1, or `run: sequential` in GOAL.md, means sequential), --budget TOKENS (default 20000),
          --upto must|should|could|later (default could: schedule everything except parked work)
@@ -833,7 +833,32 @@ def run_mode(root, max_parallel):
     return "parallel"
 
 
-def can_merge(nid, nodes, policy, review_clean, checks_pass, proof, files, ci_guard="safe"):
+REVIEW_MODES = {"auto", "fresh", "self"}
+
+
+def review_setting(root):
+    """The `review:` setting from GOAL.md frontmatter: auto (the default), fresh or self."""
+    v = str(goal_settings(root).get("review") or "auto").strip().lower()
+    return v if v in REVIEW_MODES else "auto"
+
+
+def review_mode(n, setting="auto"):
+    """Who reviews a node's pull request: `fresh` (a new agent) or `self` (the worker).
+
+    With `auto`, S nodes and docs or chore nodes are self-reviewed. Gated nodes, contract
+    providers, releases, hotfixes and every other node get a fresh reviewer.
+    """
+    if setting in ("fresh", "self"):
+        return setting
+    if n["gate"] or n["provides"] or n["type"] in ("release", "hotfix"):
+        return "fresh"
+    if n["size"] == "S" or n["type"] in ("docs", "chore"):
+        return "self"
+    return "fresh"
+
+
+def can_merge(nid, nodes, policy, review_clean, checks_pass, proof, files, ci_guard="safe",
+              review="fresh", fresh_review=False):
     """Decide whether the orchestrator may merge a node's pull request itself.
 
     Returns {"verdict": "auto" | "maintainer", "reasons": [...]}. Every reason is a
@@ -860,6 +885,8 @@ def can_merge(nid, nodes, policy, review_clean, checks_pass, proof, files, ci_gu
         reasons.append(f"status is {n['status']}, not active")
     if not review_clean:
         reasons.append("the review is not clean (blocking or should-fix findings)")
+    if review == "self" and not fresh_review:
+        reasons.append("the node was self-reviewed; auto-merge needs a fresh-agent review")
     if not checks_pass:
         reasons.append("the checks did not pass")
     if (n["type"] in ("fix", "hotfix")) and not proof:
@@ -1058,6 +1085,7 @@ def main():
     ap.add_argument("--checks-pass", action="store_true", help="can-merge: lint, typecheck, build and tests passed")
     ap.add_argument("--proof", action="store_true", help="can-merge: the fix fails on base and passes on head")
     ap.add_argument("--files", default="", help="can-merge: changed files, comma separated, or '-' to read lines from stdin")
+    ap.add_argument("--fresh-review", action="store_true", help="can-merge: a fresh agent reviewed it (needed when the node's review mode is self)")
     ap.add_argument("--ci-guard", default="safe", choices=["safe", "ask"], help="can-merge: the verdict of pr-author's ci_guard.py")
     ap.add_argument("--horizon", type=int, default=DEFAULT_HORIZON,
                     help="waves ahead within which outline nodes are due for refinement")
@@ -1124,7 +1152,8 @@ def main():
         files = (sys.stdin.read().split() if args.files == "-" else
                  [f for f in args.files.split(",") if f])
         r = can_merge(args.node, nodes, merge_policy(args.root), args.review_clean,
-                      args.checks_pass, args.proof, files, args.ci_guard)
+                      args.checks_pass, args.proof, files, args.ci_guard,
+                      review_mode(nodes[args.node], review_setting(args.root)), args.fresh_review)
         if args.json:
             print(json.dumps(r, indent=2))
         else:
@@ -1195,6 +1224,7 @@ def main():
 
     if args.command == "ready":
         ids = ready(nodes, contracts, args.upto)
+        rs = review_setting(args.root)
         if args.json:
             print(json.dumps([{
                 "id": k, "title": nodes[k]["title"], "size": nodes[k]["size"],
@@ -1203,12 +1233,13 @@ def main():
                 "branch": branch_name(nodes[k]),
                 "pr_title": pr_title(nodes[k]),
                 "model": model_for(nodes[k]), "gate": nodes[k]["gate"], "mode": mode,
+                "review": review_mode(nodes[k], rs),
                 "brief": rel(nodes[k]["dir"] / "brief.md"),
                 "context": [f["path"] for f in context_files(args.root, k, nodes, contracts)],
             } for k in ids], indent=2))
         else:
             for k in ids:
-                print(f"{k}  [{nodes[k]['size']}, {model_for(nodes[k])}]  {nodes[k]['title']}")
+                print(f"{k}  [{nodes[k]['size']}, {model_for(nodes[k])}, {review_mode(nodes[k], rs)} review]  {nodes[k]['title']}")
             if not ids:
                 print("nothing ready")
             elif mode == "sequential":

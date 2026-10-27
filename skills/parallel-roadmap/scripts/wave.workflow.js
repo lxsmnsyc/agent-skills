@@ -8,12 +8,13 @@ export const meta = {
   ],
 }
 
-// args: { root, skill, base, nodes: [{ id, title, model, branch, pr_title, mode, context: [paths] }],
+// args: { root, skill, base, nodes: [{ id, title, model, branch, pr_title, mode, review, context: [paths] }],
 //         sequential?, isolation? }
 // `base` is the branch pull requests target (usually main). Check it out before running,
 // so worktrees start from it. `sequential: true` (or `mode: sequential` on the nodes) runs
 // the workers one after another. `isolation: 'none'` then runs them in the current checkout
-// instead of worktrees; only use it when the tree is clean and the user agreed. The orchestrator reviews, updates status and handles gates
+// instead of worktrees; only use it when the tree is clean and the user agreed. Each worker reviews
+// its own pull request in its `review` mode. The orchestrator merges, updates status and handles gates
 // after this returns.
 
 const REPORT = {
@@ -24,12 +25,16 @@ const REPORT = {
     pr: { type: 'string' },
     already_fulfilled: { type: 'boolean' },
     acceptance_pass: { type: 'boolean' },
+    review_mode: { type: 'string', enum: ['fresh', 'self', 'none'] },
+    review_rounds: { type: 'integer' },
+    review_clean: { type: 'boolean' },
+    checks_pass: { type: 'boolean' },
     outcome_written: { type: 'boolean' },
     change_requests: { type: 'array', items: { type: 'string' } },
     blockers: { type: 'array', items: { type: 'string' } },
     summary: { type: 'string' },
   },
-  required: ['id', 'branch', 'pr', 'already_fulfilled', 'acceptance_pass', 'outcome_written', 'change_requests', 'blockers', 'summary'],
+  required: ['id', 'branch', 'pr', 'already_fulfilled', 'acceptance_pass', 'review_mode', 'review_rounds', 'review_clean', 'checks_pass', 'outcome_written', 'change_requests', 'blockers', 'summary'],
 }
 
 const CURATION = {
@@ -85,10 +90,13 @@ Then:
 4. Build against stubs for \`behavior\` dependencies. Do not wait for them.
 5. If a contract is wrong, write \`${root}/contracts/<name>.change-request.md\` from \`${skill}/templates/change-request.md\`, adapt locally, and continue. Do not edit the contract.
 6. Append short notes to \`${root}/nodes/${n.id}/log.md\` as you go.
-7. Run the fast check from GOAL.md. Do not run the full check unless your brief says so.
+7. Run the fast check from GOAL.md while you work. The full check runs once, during the review in step 10.
 8. Write \`${root}/nodes/${n.id}/outcome.md\` from \`${skill}/templates/outcome.md\`. Later agents read only this file.
 9. Do not change \`status\` in your brief. Commit everything on your branch with the message "${n.id}: ${n.title}".
-10. Push the branch and open a pull request against \`${base}\` (follow the pr-author skill if it is installed). Link \`${root}/nodes/${n.id}/brief.md\` in the description. Do not merge or approve it. Report its number as pr, or "" if you made no pull request.`
+10. ${(n.review || 'fresh') === 'self'
+    ? "Review the branch yourself, as step 6 of the pr-author skill describes: read your own diff as a reviewer would, go through pr-review's references/evaluation.md, and run the full checks once. Fix what you find, for at most two rounds. Report review_mode self, review_rounds, review_clean and checks_pass."
+    : 'Do not review the branch: a fresh reviewer runs after you. Report review_mode none, review_rounds 0, review_clean false, and checks_pass for the fast check.'}
+11. Push the branch and open a pull request against \`${base}\` (follow the pr-author skill if it is installed). Link \`${root}/nodes/${n.id}/brief.md\` in the description. Do not merge or approve it. Report its number as pr, or "" if you made no pull request.`
 }
 
 function runWorker(n) {
@@ -101,15 +109,41 @@ function runWorker(n) {
   })
 }
 
+const REVIEW = {
+  type: 'object',
+  properties: {
+    verdict: { type: 'string' },
+    checks_pass: { type: 'boolean' },
+    blocking: { type: 'array', items: { type: 'string' } },
+    should_fix: { type: 'array', items: { type: 'string' } },
+    nits: { type: 'array', items: { type: 'string' } },
+    base_bugs: { type: 'array', items: { type: 'string' } },
+  },
+  required: ['verdict', 'checks_pass', 'blocking', 'should_fix', 'nits', 'base_bugs'],
+}
+
+// A worker runs as a subagent and cannot spawn its own reviewer, so fresh reviews start here.
+async function workAndReview(n) {
+  const r = await runWorker(n)
+  if (!r || r.already_fulfilled || (n.review || 'fresh') === 'self') return r
+  const review = await agent(`Review ${r.branch} against ${base} in the current repo with the pr-review skill, in local mode. Do not post anything. Return the verdict, whether the full checks pass, and the findings, sorted into blocking, should fix, nits, and bugs found on the base.`,
+    { label: `review:${n.id}`, phase: 'Work', schema: REVIEW })
+  if (!review) return r
+  return {
+    ...r, review_mode: 'fresh', review_rounds: 1, checks_pass: review.checks_pass,
+    review_clean: review.blocking.length === 0 && review.should_fix.length === 0, review,
+  }
+}
+
 phase('Work')
 let reports = []
 if (sequential) {
   // One at a time: in the main checkout, two workers would switch branches under each other.
   for (const n of nodes) {
-    reports.push(await runWorker(n))
+    reports.push(await workAndReview(n))
   }
 } else {
-  reports = await parallel(nodes.map(n => () => runWorker(n)))
+  reports = await parallel(nodes.map(n => () => workAndReview(n)))
 }
 
 const done = reports.filter(Boolean)

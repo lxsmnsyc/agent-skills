@@ -77,14 +77,16 @@ When the change is a finished feature on code that runs often (render loops, req
 
 ### 6. Self-review
 
-Skip this step only for changes with no code or behavior in them, such as a typo in prose or a comment. Say in the PR that it was skipped and why. For everything else:
+Skip this step only for changes with no code or behavior in them, such as a typo in prose or a comment. Say in the PR that it was skipped and why. For everything else, review in one of two modes. Use the mode the caller gives you (a roadmap worker gets it as `review` from `plan.py ready --json`). Without one, use self mode for S changes and docs or chore changes, and fresh mode for the rest.
 
-Spawn a fresh agent to review the branch with the pr-review skill in local mode. Give it only the repo path, the base and the branch name. Do not give it your reasoning or a summary of what you did, because a reviewer that sees your reasoning tends to agree with it.
+**Fresh mode.** Spawn a fresh agent to review the branch with the pr-review skill in local mode. Give it only the repo path, the base and the branch name. Do not give it your reasoning or a summary of what you did, because a reviewer that sees your reasoning tends to agree with it. The reviewer runs the full checks, so do not run them again on the same commit. A subagent cannot spawn agents. If you are one, as a roadmap worker is, skip the review, open the pull request, and report "fresh review needed": the caller spawns the reviewer and sends you its findings.
 
 ```
 Review <branch> against <base> in <repo> with the pr-review skill, in local mode. Do not post anything.
-Return the verdict and the findings, sorted into blocking, should fix, nits, and bugs found on the base.
+Return the verdict, the checks result, and the findings, sorted into blocking, should fix, nits, and bugs found on the base.
 ```
+
+**Self mode.** Review the branch yourself in this session. No new agent loads the repo again, so it costs less, but you will tend to agree with your own reasoning. Read `git diff <base>...<branch>` from start to end as if someone else wrote it. Go through pr-review's `references/evaluation.md` (correctness, simplicity, cost, risk), and run the full checks once with `checks.py --run`. Sort what you find into the same four groups. A self-review never counts toward auto-merge.
 
 Then:
 
@@ -92,7 +94,7 @@ Then:
 - **Nits**: fix the trivial ones (a rename, a typo, a one-line change with no behavior change). Leave the rest, and list them under "Not done" in the PR description. A nit that needs restructuring or touches many files is not worth holding the PR for.
 - **Bugs found on the base**: handle them as in step 4. Every fix PR you open this way gets its own self-review round before it is handed over.
 
-Run at most two review rounds. If blocking findings remain after the second, stop and tell the user what is left instead of looping.
+Run at most two review rounds. If blocking findings remain after the second, stop and tell the user what is left instead of looping. Report the mode, the rounds, the verdict and the checks result, so the caller does not review or check again.
 
 ### 7. Open the pull request
 

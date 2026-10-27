@@ -14,9 +14,10 @@ Then:
 5. Build against stubs for `behavior` dependencies. Do not wait for them.
 6. If a contract is wrong, write `contracts/<name>.change-request.md` from `<skill>/templates/change-request.md`, adapt locally, and continue. Do not edit the contract.
 7. Append short notes to `nodes/<id>/log.md` as you go: decisions, dead ends, open doubts.
-8. Run the fast check from GOAL.md. Do not run the full check unless your brief says so; other agents need the shared resources.
+8. Run the fast check from GOAL.md while you work. The full check runs once per pull request, during the review (step 11).
 9. Write `nodes/<id>/outcome.md` from `<skill>/templates/outcome.md`. Later agents read only this file, so make it complete on its own.
 10. Do not change `status` in your brief. Commit everything on your branch with the message `<id>: <title>`.
-11. Open a pull request against `<target>` (the node's target branch from `ready --json`, or the main branch) following the pr-author skill if it is installed, otherwise with `gh pr create`. The description links the node (`<root>/nodes/<id>/brief.md`). Do not merge it.
+11. Review mode `<review>` (from `ready --json`). In `self` mode, review the branch yourself as step 6 of the pr-author skill describes, run the full check once, and fix what you find, for at most two rounds. In `fresh` mode, do not review: the orchestrator spawns a fresh reviewer after you reply, and sends you its findings to fix.
+12. Open a pull request against `<target>` (the node's target branch from `ready --json`, or the main branch) following the pr-author skill if it is installed, otherwise with `gh pr create`. The description links the node (`<root>/nodes/<id>/brief.md`). Do not merge it.
 
-Reply with: your branch name (the descriptive one, not a generated name), the PR number, whether the acceptance criteria pass (or "already fulfilled"), and anything the orchestrator must decide (change requests, blockers, deviations).
+Reply in a few lines. The orchestrator works from this reply and does not read your diff or log, so include: your branch name (the descriptive one, not a generated name), the PR number, whether the acceptance criteria pass (or "already fulfilled"), the review mode with its rounds and verdict (or "fresh review needed"), the full check result if you ran it (command, pass or fail), and anything the orchestrator must decide (change requests, blockers, deviations).
