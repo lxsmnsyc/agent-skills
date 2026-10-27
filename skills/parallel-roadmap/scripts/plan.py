@@ -16,7 +16,7 @@ Usage:
   plan.py <root> archive [--apply]   # done nodes nothing open needs: remove folders, list in archive.md
   plan.py <root> can-merge <id> --review-clean --checks-pass [--proof] --files - < changed.txt
                                    # may the orchestrator merge this node's PR itself? exit 0 = yes
-Options: --json, --max-parallel N (default 4), --budget TOKENS (default 20000),
+Options: --json, --max-parallel N (default 4; 1, or `run: sequential` in GOAL.md, means sequential), --budget TOKENS (default 20000),
          --upto must|should|could|later (default could: schedule everything except parked work)
 """
 import argparse
@@ -826,6 +826,13 @@ def merge_policy(root):
     return pol
 
 
+def run_mode(root, max_parallel):
+    """`sequential` when GOAL.md sets `run: sequential` or --max-parallel is 1, else `parallel`."""
+    if str(goal_settings(root).get("run", "")).strip().lower() == "sequential" or max_parallel == 1:
+        return "sequential"
+    return "parallel"
+
+
 def can_merge(nid, nodes, policy, review_clean, checks_pass, proof, files, ci_guard="safe"):
     """Decide whether the orchestrator may merge a node's pull request itself.
 
@@ -1043,7 +1050,7 @@ def main():
                              "overview", "can-merge", "archive"])
     ap.add_argument("node", nargs="?")
     ap.add_argument("--json", action="store_true")
-    ap.add_argument("--max-parallel", type=int, default=4)
+    ap.add_argument("--max-parallel", type=int, default=DEFAULT_MAX_PARALLEL)
     ap.add_argument("--budget", type=int, default=20000)
     ap.add_argument("--upto", choices=list(PRIORITIES), default="could")
     ap.add_argument("--apply", action="store_true", help="archive: remove the folders and write archive.md")
@@ -1061,6 +1068,9 @@ def main():
     if not (args.root / "nodes").is_dir():
         sys.exit(f"{args.root}: no nodes/ directory")
     nodes, contracts, load_errors = load(args.root)
+    mode = run_mode(args.root, args.max_parallel)
+    if mode == "sequential":
+        args.max_parallel = 1
     policy = load_policy(args.root)
     apply_targets(nodes, policy)
     milestones = goal_milestones(args.root)
@@ -1192,7 +1202,7 @@ def main():
                 "target": nodes[k].get("target_eff"),
                 "branch": branch_name(nodes[k]),
                 "pr_title": pr_title(nodes[k]),
-                "model": model_for(nodes[k]), "gate": nodes[k]["gate"],
+                "model": model_for(nodes[k]), "gate": nodes[k]["gate"], "mode": mode,
                 "brief": rel(nodes[k]["dir"] / "brief.md"),
                 "context": [f["path"] for f in context_files(args.root, k, nodes, contracts)],
             } for k in ids], indent=2))
@@ -1201,6 +1211,8 @@ def main():
                 print(f"{k}  [{nodes[k]['size']}, {model_for(nodes[k])}]  {nodes[k]['title']}")
             if not ids:
                 print("nothing ready")
+            elif mode == "sequential":
+                print("sequential: start only the first; a worktree is optional")
         return
 
     s = schedule(nodes, contracts, args.max_parallel, args.upto)

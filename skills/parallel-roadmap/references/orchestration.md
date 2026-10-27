@@ -9,6 +9,7 @@ How to run nodes with several agents at once, ship their work, and keep the plan
 - Rolling and waves
 - The loop
 - Spawning a worker
+- Sequential mode
 - Already fulfilled work
 - Merging and verification
 - Shared and exclusive resources
@@ -20,7 +21,7 @@ How to run nodes with several agents at once, ship their work, and keep the plan
 ## Roles
 
 - **Orchestrator**: the main agent in the user's session. It is the only one that edits `status` fields, contracts and other shared roadmap files. A single writer for shared state removes a whole class of conflicts.
-- **Workers**: one per node, each in its own git worktree on its own branch. A worker edits its owned paths and its own `nodes/<id>/` folder, and opens one pull request.
+- **Workers**: one per node, each in its own git worktree on its own branch (in sequential mode, the worktree is optional). A worker edits its owned paths and its own `nodes/<id>/` folder, and opens one pull request.
 - **Reviewer**: a fresh-context agent that reviews each pull request (the pr-review skill, if installed), and reviews the plan itself during the stress test.
 - **Curator**: runs at checkpoints. See `memory.md`.
 - **Maintainer**: the person who approves and merges pull requests. By default the repo owner or the user. Agents never approve their own work.
@@ -59,7 +60,7 @@ Waves printed by `plan.py status` are a forecast in both modes. The decision to 
 2. `python3 <skill>/scripts/plan.py <root> verify` runs the `verify` commands of all todo nodes. Close any node whose acceptance already holds (see "Already fulfilled work").
 3. `python3 <skill>/scripts/plan.py <root> ready --json`. The list is sorted by priority, then by critical path. Take up to `--max-parallel` nodes from the top.
 4. Set each one to `status: active` and commit that to the main branch (or the integration branch). Keep the commit to the brief files only.
-5. Spawn the workers in a single message so they run at the same time (see "Spawning a worker").
+5. Spawn the workers in a single message so they run at the same time (see "Spawning a worker"). In sequential mode, spawn only the first one.
 6. When a worker returns, send its pull request to review (see "Merging and verification").
 7. When the pull request merges, set `status: done`, and run the curator at checkpoints.
 8. Stop at gates (see "Gates"). Otherwise go to step 1.
@@ -71,6 +72,17 @@ Use the Agent tool with `isolation: "worktree"` and the model from `ready --json
 Before spawning, check that the base branch already contains what the worker needs: the frozen contracts and the outcomes of its dependencies.
 
 Check the machine before a wide wave. Each worktree may need its own dependency install and dev server. If memory is tight or the load is high, lower `--max-parallel`. The pr-author skill has a capacity check for this.
+
+## Sequential mode
+
+A roadmap runs one node at a time when `GOAL.md` sets `run: sequential`, or when `plan.py` runs with `--max-parallel 1`. `ready --json` then reports `"mode": "sequential"` on every node. Use it when the user asks for it, when the machine has room for only one worktree, or when every node edits the same files.
+
+Worktrees keep parallel workers apart. With one worker there is nothing to keep apart, so the worktree is optional:
+
+- **Main checkout**: spawn the worker without `isolation`. Before the first node of a session, run `git status` and ask the user once whether the worker may switch branches in their checkout. Only use it when the tree is clean and the user agrees. The worker runs `git fetch` and `git switch -c <branch> <target>` itself. When it returns, switch the checkout back to the base branch before the next status commit.
+- **One worktree**: otherwise, spawn with `isolation: "worktree"` as usual, or keep one worktree from pr-author's `wt.py` and reuse it for every node.
+
+Everything else stays the same: one branch and one pull request per node, outcomes, reviews and gates. The ready list still holds every node that could start. Take the first.
 
 ## Already fulfilled work
 
@@ -170,7 +182,7 @@ The user can waive gates. Record that in `GOAL.md` so later sessions know.
 
 ## Running a wave as a Workflow
 
-For long roadmaps, `scripts/wave.workflow.js` runs one wave: it spawns all workers in parallel, each in a worktree with its suggested model, then runs a curator agent over the results. The orchestrator still handles reviews, status changes and gates between waves, because the Workflow script cannot read or write files.
+For long roadmaps, `scripts/wave.workflow.js` runs one wave: it spawns all workers in parallel, each in a worktree with its suggested model, then runs a curator agent over the results. In sequential mode (`sequential: true` in args) it runs the workers one after another, and `isolation: "none"` runs them in the current checkout instead of worktrees. The orchestrator still handles reviews, status changes and gates between waves, because the Workflow script cannot read or write files.
 
 Only use it when the user has asked for workflow orchestration, or when they invoked this skill to run waves:
 
@@ -178,6 +190,7 @@ Only use it when the user has asked for workflow orchestration, or when they inv
 plan.py <root> ready --json        # becomes args.nodes
 Workflow({ scriptPath: "<skill>/scripts/wave.workflow.js",
            args: { root: "<root>", skill: "<skill>", base: "main", nodes: [...] } })
+// sequential mode: add sequential: true, and isolation: "none" to use the current checkout
 ```
 
 It returns each worker's report (branch, pull request, status) and the curator's proposals.

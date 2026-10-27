@@ -1,4 +1,4 @@
-You are the worker for node `<id>` of the roadmap in `<root>`. Several other agents are working on other nodes at the same time, each in its own git worktree. Your work must stay inside your own node so that everyone's branches merge cleanly.
+You are the worker for node `<id>` of the roadmap in `<root>`. <Parallel mode: "Several other agents are working on other nodes at the same time, each in its own git worktree." Sequential mode: "You are the only worker running now. Other nodes come after you."> Your work must stay inside your own node so that everyone's branches merge cleanly.
 
 Start by reading these files, in this order. They are all the context you need; do not read other nodes' logs.
 
@@ -6,7 +6,7 @@ Start by reading these files, in this order. They are all the context you need; 
 
 Then:
 
-0. Name your branch. If your worktree is on a generated branch (such as `worktree-agent-...`), rename it before committing: `git branch -m <branch>`, where `<branch>` comes from `ready --json` (for example `feat/frame-writer`). Use `<pr_title>` from the same output as the pull request title, following the repo's own title convention if it differs.
+0. Name your branch. If your worktree is on a generated branch (such as `worktree-agent-...`), rename it before committing: `git branch -m <branch>`. If you work in the main checkout without a worktree, start the branch yourself: `git fetch`, then `git switch -c <branch> <target>`. In both cases `<branch>` comes from `ready --json` (for example `feat/frame-writer`). Use `<pr_title>` from the same output as the pull request title, following the repo's own title convention if it differs.
 1. Check first whether the work already exists. Run the brief's `verify` command if it has one, and look at the code its acceptance criteria describe. If every criterion already holds, make no code changes: write `outcome.md` with "Already fulfilled" under Built, the evidence (commands and results, and the commit, PR or node that did it), and stop. If some criteria hold, do only the rest and say so in the outcome.
 2. If `nodes/<id>/log.md` exists, you are resuming. Continue from where it stops.
 3. Do the work described in the brief. Edit only the brief's owned paths and `nodes/<id>/`. If you must touch another file, keep the change minimal and record it under Deviations in your outcome.

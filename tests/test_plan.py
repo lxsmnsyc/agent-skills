@@ -270,6 +270,12 @@ class PlanTest(unittest.TestCase):
         (self.root / "GOAL.md").write_text("# G\n")
         self.assertEqual(plan.merge_policy(self.root)["mode"], "maintainer")
 
+    def test_run_mode(self):
+        self.assertEqual(plan.run_mode(self.root, 4), "parallel")
+        self.assertEqual(plan.run_mode(self.root, 1), "sequential")
+        (self.root / "GOAL.md").write_text("---\nrun: sequential\n---\n# G\n")
+        self.assertEqual(plan.run_mode(self.root, 4), "sequential")
+
     def test_archive_only_what_nothing_open_needs(self):
         contract(self.root, "api", status="frozen")
         node(self.root, "a", size="M", owns="[a/**]", status="done", milestone="q1", provides="[api]")

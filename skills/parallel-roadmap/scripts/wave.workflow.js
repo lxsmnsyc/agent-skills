@@ -8,9 +8,12 @@ export const meta = {
   ],
 }
 
-// args: { root, skill, base, nodes: [{ id, title, model, branch, pr_title, context: [paths] }] }
+// args: { root, skill, base, nodes: [{ id, title, model, branch, pr_title, mode, context: [paths] }],
+//         sequential?, isolation? }
 // `base` is the branch pull requests target (usually main). Check it out before running,
-// so worktrees start from it. The orchestrator reviews, updates status and handles gates
+// so worktrees start from it. `sequential: true` (or `mode: sequential` on the nodes) runs
+// the workers one after another. `isolation: 'none'` then runs them in the current checkout
+// instead of worktrees; only use it when the tree is clean and the user agreed. The orchestrator reviews, updates status and handles gates
 // after this returns.
 
 const REPORT = {
@@ -55,15 +58,21 @@ const CURATION = {
 }
 
 const { root, skill, base, nodes } = args
+const sequential = args.sequential === true || (Array.isArray(nodes) && nodes.some(n => n.mode === 'sequential'))
+const isolation = sequential && args.isolation === 'none' ? 'none' : 'worktree'
 if (!Array.isArray(nodes) || nodes.length === 0) {
   log('No ready nodes were passed in args.nodes; nothing to run.')
   return { reports: [], curation: null }
 }
 
 function workerPrompt(n) {
-  return `You are the worker for node \`${n.id}\` ("${n.title}") of the roadmap in \`${root}\`. Several other agents are working on other nodes at the same time, each in its own git worktree. Your work must stay inside your own node so that everyone's branches merge cleanly.
+  return `You are the worker for node \`${n.id}\` ("${n.title}") of the roadmap in \`${root}\`. ${sequential
+    ? 'You are the only worker running now. Other nodes come after you.'
+    : 'Several other agents are working on other nodes at the same time, each in its own git worktree.'} Your work must stay inside your own node so that everyone's branches merge cleanly.
 
-First give your branch a descriptive name: \`git branch -m ${n.branch || 'feat/' + n.id}\` (your worktree may start on a generated name such as worktree-agent-...). Use "${n.pr_title || n.title}" as the pull request title, following the repo's own title convention if it differs.
+${isolation === 'none'
+    ? `You work in the main checkout, not a worktree. Start your branch: \`git fetch\`, then \`git switch -c ${n.branch || 'feat/' + n.id} ${base}\`. When you are done, switch back to \`${base}\`.`
+    : `First give your branch a descriptive name: \`git branch -m ${n.branch || 'feat/' + n.id}\` (your worktree may start on a generated name such as worktree-agent-...).`} Use "${n.pr_title || n.title}" as the pull request title, following the repo's own title convention if it differs.
 
 Read these files in this order. They are all the context you need; do not read other nodes' logs.
 ${n.context.map(p => `- ${p}`).join('\n')}
@@ -82,15 +91,26 @@ Then:
 10. Push the branch and open a pull request against \`${base}\` (follow the pr-author skill if it is installed). Link \`${root}/nodes/${n.id}/brief.md\` in the description. Do not merge or approve it. Report its number as pr, or "" if you made no pull request.`
 }
 
-phase('Work')
-const reports = await parallel(nodes.map(n => () =>
-  agent(workerPrompt(n), {
+function runWorker(n) {
+  return agent(workerPrompt(n), {
     label: `node:${n.id}`,
     phase: 'Work',
-    isolation: 'worktree',
+    ...(isolation === 'worktree' ? { isolation: 'worktree' } : {}),
     schema: REPORT,
     ...(n.model ? { model: n.model } : {}),
-  })))
+  })
+}
+
+phase('Work')
+let reports = []
+if (sequential) {
+  // One at a time: in the main checkout, two workers would switch branches under each other.
+  for (const n of nodes) {
+    reports.push(await runWorker(n))
+  }
+} else {
+  reports = await parallel(nodes.map(n => () => runWorker(n)))
+}
 
 const done = reports.filter(Boolean)
 const missing = nodes.filter(n => !done.some(r => r.id === n.id)).map(n => n.id)
