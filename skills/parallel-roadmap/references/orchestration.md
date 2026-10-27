@@ -72,7 +72,7 @@ The orchestrator is usually the most expensive agent in a run. It reads its whol
 
 - **Work from replies and script output.** Do not read workers' diffs, logs or full outcomes in this session. The curator reads outcomes. `plan.py` answers the questions about paths, readiness and merge rules.
 - **Delegate investigation.** When a reply raises something that needs reading code, spawn an agent and ask for a short answer.
-- **End the session at checkpoints.** Every piece of state is in the repo: statuses, outcomes, logs and wave reports. After each curator pass, or after about five merged pull requests, check that no worker is still running, commit the roadmap files, and make sure `reviews/wave-<n>.md` says what is active and what waits on what. Then tell the user to start a new session (`/clear`) with "Continue the roadmap in `<root>`". The new session starts from `plan.py <root> status` and the last wave report.
+- **End the session at checkpoints.** Every piece of state is in the repo: statuses, outcomes, logs and wave reports. In waves mode, do this after each wave's curator pass. In rolling mode, do it after each curator pass or after about five merged pull requests. Check that no worker is still running, commit the roadmap files, and make sure `reviews/wave-<n>.md` says what is active and what waits on what. Then tell the user to start a new session (`/clear`) with "Continue the roadmap in `<root>`". The new session starts from `plan.py <root> status` and the last wave report.
 
 ## Spawning a worker
 
@@ -193,7 +193,7 @@ The user can waive gates. Record that in `GOAL.md` so later sessions know.
 
 ## Running a wave as a Workflow
 
-For long roadmaps, `scripts/wave.workflow.js` runs one wave: it spawns all workers in parallel, each in a worktree with its suggested model, then runs a curator agent over the results. In sequential mode (`sequential: true` in args) it runs the workers one after another, and `isolation: "none"` runs them in the current checkout instead of worktrees. After each worker in `fresh` mode, it runs one reviewer and returns its findings with the worker's report. Self mode workers review their own branches. The orchestrator still sends findings back to workers, merges, and handles status changes and gates between waves, status changes and gates between waves, because the Workflow script cannot read or write files.
+For long roadmaps, `scripts/wave.workflow.js` runs one wave: it spawns all workers in parallel, each in a worktree with its suggested model, then runs a curator agent over the results. In sequential mode (`sequential: true` in args) it runs the workers one after another, and `isolation: "none"` runs them in the current checkout instead of worktrees. After each worker in `fresh` mode, it runs one reviewer and returns its findings with the worker's report. Self mode workers review their own branches. The orchestrator still sends findings back to workers, merges, and handles status changes and gates between waves, because the Workflow script cannot read or write files.
 
 Only use it when the user has asked for workflow orchestration, or when they invoked this skill to run waves:
 
