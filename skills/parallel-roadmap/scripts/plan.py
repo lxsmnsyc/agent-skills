@@ -301,6 +301,18 @@ def start_preds(node, nodes, contracts):
     return {p for p in preds if nodes[p]["status"] != "dropped"}
 
 
+def all_preds(node, nodes, contracts):
+    """Nodes that must finish before `node` can start, directly or through other nodes."""
+    seen, todo = set(), [node]
+    while todo:
+        for p in start_preds(todo.pop(), nodes, contracts):
+            if p not in seen:
+                seen.add(p)
+                todo.append(nodes[p])
+    seen.discard(node["id"])
+    return seen
+
+
 def integration_preds(node, nodes):
     """Nodes whose real behavior `node` was built against a stub of."""
     return {
@@ -464,13 +476,20 @@ def check(nodes, contracts, load_errors, policy=None, milestones=None):
             if not (n["from"] and n["target"]):
                 errors.append(f"node {nid}: a release node needs `from` and `target` branches")
                 continue
-            preds = start_preds(n, live(nodes), contracts)
+            preds = all_preds(n, live(nodes), contracts)
             missing = sorted(k for k, o in live(nodes).items()
                              if k != nid and o.get("target_eff") == n["from"]
                              and o["status"] not in DONE and k not in preds)
             if missing:
                 warnings.append(f"node {nid}: releases {n['from']} -> {n['target']} but does not wait "
                                 f"for open work on {n['from']}: {', '.join(missing)}")
+            unshipped = sorted(k for k, o in live(nodes).items()
+                               if k != nid and n["milestone"] and o["milestone"] == n["milestone"]
+                               and o["type"] != "release" and o["status"] not in DONE
+                               and k not in preds)
+            if unshipped:
+                warnings.append(f"node {nid}: releases milestone {n['milestone']} but does not wait "
+                                f"for its open nodes: {', '.join(unshipped)}")
     for nid, n in nodes.items():
         where = f"node {nid}"
         if n["dirname"] != nid:
