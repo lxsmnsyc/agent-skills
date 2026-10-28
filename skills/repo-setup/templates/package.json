@@ -1,0 +1,19 @@
+{
+  "name": "root",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "pnpm -r --filter=./packages/* build",
+    "test": "pnpm -r --filter=./packages/* test",
+    "typecheck": "pnpm -r typecheck",
+    "lint": "oxlint --type-aware",
+    "lint:fix": "oxlint --type-aware --fix",
+    "format": "oxfmt",
+    "format:check": "oxfmt --check",
+    "changeset": "changeset",
+    "version": "changeset version"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

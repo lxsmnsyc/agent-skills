@@ -1,0 +1,9 @@
+packages:
+  - packages/*
+  - examples/*
+  # Remove the entries below that the project does not have.
+  - website
+  - e2e
+  - benchmarks/*
+linkWorkspacePackages: true
+preferWorkspacePackages: true

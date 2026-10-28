@@ -1,0 +1,26 @@
+# Add these jobs to release.yml when the release has a second target, such as
+# a VS Code extension. Each target then publishes from its own environment,
+# and the npm publish job gets `environment: npm` too.
+
+  publish-vscode:
+    name: Publish to the VS Code marketplace
+    needs: publish
+    runs-on: ubuntu-latest
+    # Create this environment in the repository settings, with its secrets.
+    environment: vscode
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          package-manager-cache: false
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter <extension package> package
+      - run: pnpm --filter <extension package> exec vsce publish --packagePath *.vsix
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}

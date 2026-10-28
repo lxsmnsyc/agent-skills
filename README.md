@@ -10,6 +10,7 @@ Skills for Claude Code and other agents that support the Agent Skills format.
 - [`pr-review`](skills/pr-review/SKILL.md): review a pull request or branch with evidence. Fixes are reproduced on the base and proven on the head, features are checked against the roadmap, checks run locally, and approval goes to the maintainer.
 - [`perf-pass`](skills/perf-pass/SKILL.md): profile a finished feature, try several optimizations side by side, and keep the one with the best measured gain for its cost. Runtime for libraries and servers, bundle size for web apps.
 - [`changesets`](skills/changesets/SKILL.md): write the changeset for a change. The bump level follows whether the thing existed before; `major` only with the maintainer's approval.
+- [`repo-setup`](skills/repo-setup/SKILL.md): set up a new or old npm library repo: pnpm, changesets, tsdown, vitest, oxlint and oxfmt. Adds a check workflow and a release workflow with trusted publishing.
 - [`security-fix`](skills/security-fix/SKILL.md): fix a vulnerability on a branch that is never pushed. The fix goes public when CI publishes the release, so npm provenance stays.
 - [`ts-style`](skills/ts-style/SKILL.md): style rules for `.ts` and `.js` code. for-of loops instead of callback Array methods, function declarations, and the repo's linter after each edit.
 - [`plain-writing`](skills/plain-writing/SKILL.md): rules for short, exact prose that people and agents can both scan, with a checker script and an optional hook for commits and PRs.
@@ -88,6 +89,20 @@ Reviews answer three questions with evidence: does the change work, is it worth 
 - Proposes at least three options from different kinds of fix, tries the promising ones in separate worktrees, and measures them side by side.
 - `scripts/bench.py` interleaves runs across checkouts and marks a change as real only when it beats the noise.
 - Reports a table with the chosen option and the rejected ones, so measured dead ends are not tried again.
+
+## repo-setup
+
+One setup for every npm library repo the user owns, taken from their newest repos:
+
+- `scripts/audit.py` lists what a repo has and lacks (`ok`, `missing`, `migrate`), and which packages are not on npm yet
+- `templates/` holds the workflows, configs and license to copy; tool versions are read from npm at setup time
+- new packages get a manual `0.0.0-stage` publish with `--otp`, then trusted publishing on npmjs.com, then `0.1.0` from CI
+- GitHub environments only when a release has more than one target, such as npm and the VS Code marketplace
+- old repos get one setup pull request through pr-author, and nothing is pushed to a private repo without asking
+
+```
+python3 skills/repo-setup/scripts/audit.py <repo>
+```
 
 ## security-fix
 
