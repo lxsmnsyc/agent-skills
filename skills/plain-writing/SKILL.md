@@ -119,12 +119,13 @@ A comment earns its place by saying something the code cannot. Write it short, w
 
 - **Length.** Most blocks are one to four lines. A block over about eight lines needs a real reason: a formula, a protocol, a subtle invariant, a module header.
 - **Say the why.** The non-obvious reason, the constraint, the trap. Never restate the signature or the next line in prose.
+- **Section comments say the how.** Inside a function body, a comment opens each group of lines and says what that step does. The reader can then follow the function from these comments alone. They name a step, not a line, so they stay even when each line is readable. Keep them to one or two lines each.
 - **No history.** Cut "it used to", "this replaced", "that is what was wrong with". The old design is in git; the comment describes what is here now.
 - **No build-up.** State the point once. Cut the second example that makes the same case as the first.
 - **One idea per block.** A doc block with three paragraphs about three things means the code does too much, or two of them belong next to the code they are about.
 - **Keep verbatim**: lint directives, external links, formulas, and any warning that prevents a bug or data loss.
 - **Doc blocks** on exported functions, types and constants say what the thing is and the one thing a caller could get wrong, not how it works inside. Interface fields get one line each, unless the field carries a rule (a default, a stored-empty convention, a value that must never be trusted).
-- **Inline comments** explain a line that looks wrong but is right. If the code is plainly readable, delete the comment instead of writing one.
+- **Inline comments** explain a line that looks wrong but is right. If the line is plainly readable, delete its comment instead of writing one. Section comments are not inline comments.
 - **Light is not cryptic.** Full sentences, no shorthand, no references nobody can resolve ("the fix", a bare ticket number).
 
 ```ts
