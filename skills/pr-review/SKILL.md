@@ -92,7 +92,7 @@ Sort every finding into one of three kinds:
 - **Should fix**: real problems that are small. Two or more of these, or one that touches behavior, also hold back approval.
 - **Nit**: style, naming, wording. Nits never hold back approval.
 
-Bugs you find on the base that the PR did not cause and does not touch are not findings against the PR. Mention them under a separate heading ("Found on `<base>`, not caused by this PR") and suggest a separate fix PR against the base branch, so the fix can ship on its own and this PR is not held up.
+Bugs you find on the base that the PR did not cause and does not touch are not findings against the PR. Mention them under a separate heading ("Found on `<base>`, not caused by this PR") and suggest a separate fix PR against the base branch, so the fix can ship on its own and this PR is not held up. A vulnerability on the base never goes in the review. Report it only to the user, who fixes it with the security-fix skill.
 
 Then:
 

@@ -58,6 +58,8 @@ Read `references/non-blocking.md`. The short version:
 
 When you find a bug that exists on the base branch (not one your branch introduced):
 
+A vulnerability is the exception. Do not open a fix PR, an issue or an inbox entry for it, and do not push a test that shows it. Stop and report it to the user, or to the orchestrator when you are a subagent, and fix it with the security-fix skill.
+
 1. **Confirm it on the base.** Write the smallest failing test. Run it on the base with `repro.py` from pr-review, or in a worktree of the base. A bug you cannot show on the base is not ready for a fix PR.
 2. **Decide.**
    - **The cause is clear and the fix is small**: fix it in its own PR. `wt.py new fix/<slug> --base <base>`, add the failing test, fix, check, self-review, open the PR against the branch the policy gives for a fix (or for a hotfix, when the bug is in released code and cannot wait for the next release). It ships on its own, without waiting for your feature.

@@ -9,7 +9,7 @@
   "plugins": [
     {
       "name": "agent-skills",
-      "description": "Debate a goal's cost before planning it, plan work as a dependency graph, ship small independent pull requests, review with evidence, measure performance, and write short, exact prose.",
+      "description": "Debate a goal's cost before planning it, plan work as a dependency graph, ship small independent pull requests, review with evidence, measure performance, ship security fixes without leaking them, and write short, exact prose.",
       "source": "./",
       "category": "productivity"
     }

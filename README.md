@@ -10,6 +10,7 @@ Skills for Claude Code and other agents that support the Agent Skills format.
 - [`pr-review`](skills/pr-review/SKILL.md): review a pull request or branch with evidence. Fixes are reproduced on the base and proven on the head, features are checked against the roadmap, checks run locally, and approval goes to the maintainer.
 - [`perf-pass`](skills/perf-pass/SKILL.md): profile a finished feature, try several optimizations side by side, and keep the one with the best measured gain for its cost. Runtime for libraries and servers, bundle size for web apps.
 - [`changesets`](skills/changesets/SKILL.md): write the changeset for a change. The bump level follows whether the thing existed before; `major` only with the maintainer's approval.
+- [`security-fix`](skills/security-fix/SKILL.md): fix a vulnerability on a branch that is never pushed. The fix goes public when CI publishes the release, so npm provenance stays.
 - [`ts-style`](skills/ts-style/SKILL.md): style rules for `.ts` and `.js` code, starting with for-of loops instead of callback Array methods.
 - [`plain-writing`](skills/plain-writing/SKILL.md): rules for short, exact prose that people and agents can both scan, with a checker script and an optional hook for commits and PRs.
 
@@ -87,6 +88,16 @@ Reviews answer three questions with evidence: does the change work, is it worth 
 - Proposes at least three options from different kinds of fix, tries the promising ones in separate worktrees, and measures them side by side.
 - `scripts/bench.py` interleaves runs across checkouts and marks a change as real only when it beats the noise.
 - Reports a table with the chosen option and the rejected ones, so measured dead ends are not tried again.
+
+## security-fix
+
+A public pull request or pushed branch reveals a vulnerability before the release that fixes it. A manual `npm publish` hides it, but drops the provenance attestation, and package managers with trust policies then refuse the version. This skill:
+
+- works on a local branch with no upstream, and never opens a pull request
+- runs the project's checks locally, because CI does not see the code before the merge
+- bumps the version with changesets on the branch, so the push publishes at once instead of opening a version PR
+- merges into the branch the release workflow publishes from and pushes it only after the user confirms, and only for a public repo
+- checks the new version on the registry for provenance, then reminds the user to publish the advisory
 
 ## plain-writing
 
