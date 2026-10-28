@@ -6,6 +6,7 @@ How to run nodes with several agents at once, ship their work, and keep the plan
 
 - Roles
 - One pull request per node
+- Stories
 - Releasing from one branch
 - Rolling and waves
 - The loop
@@ -47,6 +48,20 @@ With several stages (`dev -> next -> main`), work moves on through release nodes
 
 Hotfix nodes target the released branch directly, and the worker opens the back-merge pull requests into the other stages after the hotfix merges.
 
+## Stories
+
+A story is one feature on its own branch, `feat/<story id>`. Its children are nodes whose `target` in `ready --json` is that branch.
+
+1. **Open the branch.** When the first child becomes ready, create the story branch from the story's target: `git branch feat/<story id> <target>`. Push it, unless the repo is private and the user keeps branches local (see "One pull request per node"). Set the story to `status: active` in the same status commit as the child.
+2. **Children.** Each child runs as a normal node: worker, worktree, review, outcome. Its worktree must start from the story branch, so the worker prompt tells it to reset to `<target>` before its first commit. Merge each child into the story branch with a merge commit, not a squash, so the story keeps one commit per child. With `merge.stories: auto` (the default), the orchestrator merges a child when `plan.py can-merge` allows it. This holds even when `merge.mode` is `maintainer`, because the maintainer reviews the whole story later. The exclusions still apply: a gated child or one that provides a contract goes to the maintainer.
+3. **Early children.** A child with `early: true` targets the story's target, not the story branch, and follows the normal merge rules. After it merges, merge the target into the story branch so later children build on it.
+4. **Keep the branch current.** At every checkpoint, merge the story's target into the story branch, and run the fast check there. Conflicts found now are cheap. Conflicts found when the story pull request opens hold up the whole feature.
+5. **The story pull request.** When every child is done, `ready --json` lists the story with `"action": "story-pr"`. No worker runs. Open a pull request from the story branch into its target, titled from `pr_title`, and list the children with their outcomes in the description. Spawn one fresh reviewer with the pr-review skill for the whole branch. Then hand it to the maintainer, since `story` is in the default `merge.exclude`. When it merges, set the story to `done`.
+
+Roadmap files written by a child (its outcome and log) reach the main branch only with the story. Curators and siblings read them from the story branch: `git show feat/<story id>:<root>/nodes/<id>/outcome.md`.
+
+Sometimes a child cannot be done on the story branch, for example when it needs a fix that other work needs too. The worker reports this as a blocker. The orchestrator then adds an early child for that part, with the Change procedure.
+
 ## Releasing from one branch
 
 Many repos merge every pull request into the main branch and publish from it, with changesets or a tag. Then everything merged ships with the next release, whether it was planned for that release or not. Declare this in `GOAL.md`:
@@ -84,7 +99,7 @@ Waves printed by `plan.py status` are a forecast in both modes. The decision to 
 1. `python3 <skill>/scripts/plan.py <root> check`. Stop on errors.
 2. `python3 <skill>/scripts/plan.py <root> verify` runs the `verify` commands of all todo nodes. Close any node whose acceptance already holds (see "Already fulfilled work").
 3. `python3 <skill>/scripts/plan.py <root> ready --json`. The list is sorted by priority, then by critical path. Take up to `--max-parallel` nodes from the top.
-4. Set each one to `status: active` and commit that to the main branch (or the integration branch). Keep the commit to the brief files only.
+4. Set each one to `status: active` and commit that to the main branch. For a story's first child, also create the story branch and set the story `active` (see "Stories"). Keep the commit to the brief files only.
 5. Spawn the workers in a single message so they run at the same time (see "Spawning a worker"). In sequential mode, spawn only the first one.
 6. When a worker returns, act on its reply (see "Merging and verification"). In `self` mode the worker has already reviewed and checked it. In `fresh` mode, spawn the reviewer.
 7. When the pull request merges, set `status: done` and `spent:` (the tokens of the worker, the reviewer and any fix rounds, added up from their usage reports), and run the curator at checkpoints.
@@ -157,7 +172,8 @@ merge:
   mode: auto                                   # maintainer is the default
   method: squash
   max_size: M                                  # larger nodes go to the maintainer
-  exclude: [release, hotfix, contract, gate]   # always go to the maintainer
+  exclude: [release, hotfix, contract, gate, story]   # always go to the maintainer
+  stories: auto                                # children merge into their story branch without the maintainer
 ```
 
 Only switch to `auto` when the user asks for it. Merging is visible to everyone on the repo.

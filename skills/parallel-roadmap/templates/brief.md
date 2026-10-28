@@ -3,7 +3,9 @@ id: <id, same as the folder name>
 title: <short title>
 status: todo            # todo | active | done | released | dropped (only the orchestrator changes this)
 priority: should        # must (needed now) | should (important, can ship without) | could (when capacity is free) | later (parked)
-type: feature           # feature | fix | hotfix | refactor | docs | chore | release | spike | contract | experiment
+type: feature           # feature | fix | hotfix | refactor | docs | chore | release | spike | contract | experiment | story
+story:                  # the story this node is part of. Its pull request targets the story branch. A child with empty priority or milestone takes them from the story
+early: false            # story children only: lands on the parent branch before the story, e.g. a hot file split or a fix other work needs
 outline: false          # true for far-off work that is not broken into a brief yet: goal, priority, rough deps and size only
 milestone:              # optional group from the milestones list in GOAL.md, e.g. a quarter or a release. Required on release nodes that publish from one branch
 target:                 # branch the pull request targets; empty means the branch policy for this type

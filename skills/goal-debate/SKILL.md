@@ -145,6 +145,7 @@ A roadmap can grow faster than it ships: many outline nodes, a must line that ke
 - Frame adds the roadmap's own numbers as facts: `plan.py <root> overview`, the must line, nodes done per week (from `git log` on the briefs' status changes), `spent:` against `budget:`, and `CALIBRATION.md`.
 - The opponent writes `cut` claims: `action` (`drop`, `park` to `later`, `merge` into another node, or `outline` to undo a brief written too early) and the `nodes` it applies to, with the cost each cut saves. `check` rejects cuts of done or unknown nodes, and warns about active ones.
 - The proponent defends nodes with what they are worth to the outcome, and may propose cheaper versions of them.
+- A `merge` cut does not always mean one node. Parts of one feature that each stay a reviewable size can become a parallel-roadmap story instead. The feature then gets one branch and one pull request, and its parts are still built in parallel.
 - After approval, apply the upheld cuts through parallel-roadmap's Change procedure: never edit an active node, set `priority: later` for parks, `status: dropped` with a reason for drops. Then show the user the new `plan.py overview`.
 
 ## Rules

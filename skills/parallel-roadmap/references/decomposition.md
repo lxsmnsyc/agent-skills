@@ -8,6 +8,7 @@ How to cut work into nodes that run in parallel, are the right size, and fit an 
 - What the scores trigger
 - Split strategies
 - When not to split
+- Stories
 - Priority
 - Shared files and global counters
 - Choosing the model
@@ -65,6 +66,24 @@ A node is one pull request. Every node has a fixed cost: loading context, settin
 - The only reason to split is tidiness. A split that does not let two agents work at the same time, and does not reduce risk, is pure overhead.
 
 Balance waves too. A wave takes as long as its slowest node, so if one L sits in a wave of S nodes, split the L first.
+
+## Stories
+
+A story groups the nodes of one feature on one branch (see "Stories" in `SKILL.md` for the fields). Children follow the same rules as any node. Each child is one reviewable pull request, sized by the rubric, and the split strategies above apply inside a story.
+
+Make a story when:
+
+- The user asked for one feature ("add a sign-in form") and it needs two or more M nodes.
+- The parts are not useful to users alone. Shipping them one by one would need feature flags or leave dead code on the main branch.
+- The maintainer wants to review the feature as a whole.
+
+Do not make a story when:
+
+- One node is enough. A story with one child is a node with an extra pull request.
+- Each part is useful on its own. Separate nodes reach users sooner.
+- The work is a refactor across the codebase. Expand, migrate, contract keeps each step on the main branch, so a long-lived branch only adds conflicts.
+
+A story branch lives as long as its slowest child, and the main branch moves on meanwhile. Keep stories to a few waves. Mark a child `early` when other work needs it on the parent branch. Typical cases are hot file splits, fixes to bugs on the base, dependency bumps, and contracts used outside the story. Sizing the story node itself: its size is the whole feature, and is only used while it is an outline. Once it has children, `plan.py` counts it as one small step, the story pull request.
 
 ## Priority
 

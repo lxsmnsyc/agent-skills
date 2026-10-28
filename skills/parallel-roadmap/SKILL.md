@@ -16,6 +16,7 @@ Ask yourself what the user needs right now, then go to that phase. Do not run al
 | weigh whether a goal is worth its cost before planning it | the goal-debate skill, then 1. Discover |
 | cut the scope of a roadmap that grows faster than it ships, or is over its budget | the goal-debate skill with `--roadmap`, then Change |
 | plan something new | 1. Discover |
+| add one feature that needs several nodes ("add a sign-in form") | 2. Decompose, as a story |
 | turn an existing plan, proposal, ADR batch or backlog into a roadmap | 0. Survey, then 2. Decompose |
 | review or harden a plan | 3. Stress-test |
 | run the next batch of work | 6. Execute |
@@ -45,7 +46,7 @@ Templates for each file are in `templates/`. Copy them; do not invent new fields
 
 Token spend lives in the briefs too. When a node closes, the orchestrator sets `spent:` to the tokens its worker, reviewer and fix rounds used, from the agents' usage reports. With `budget: {tokens: N}` in `GOAL.md` (usually from a goal debate), `plan.py` reports spend against the budget and a forecast at the current rate, and warns at 80% and when the forecast goes over. Over budget means stop and cut scope, or rerun the goal debate with the actual spend.
 
-Status lives in exactly one place: the `status` field of each brief. `done` means the node's pull request merged into its target branch. In repos with several stages (`dev -> next -> main`), `released` means the work reached the last one. In repos that publish from one branch, it means the work was published. The curator sets it when a release node merges. Other documents link to the roadmap instead of restating status. Repos that track status in three places (a strategy doc, an ADR header and a proposal list) drift apart within weeks.
+Status lives in exactly one place: the `status` field of each brief. `done` means the node's pull request merged into its target branch. For a story's child, that is the story branch. In repos with several stages (`dev -> next -> main`), `released` means the work reached the last one. In repos that publish from one branch, it means the work was published. The curator sets it when a release node merges. Other documents link to the roadmap instead of restating status. Repos that track status in three places (a strategy doc, an ADR header and a proposal list) drift apart within weeks.
 
 Use the repo's existing decision record system when there is one (for example `docs/decisions/NNNN-*.md`). Only create `<root>/decisions/` when the repo has nothing.
 
@@ -121,6 +122,19 @@ A roadmap can cover months or years. Planning all of it down to pull-request-siz
 - **Milestones** group the plan into stages that mean something to the user (a release, a quarter). List them in order in `GOAL.md` (`milestones: [...]`) and tag nodes with `milestone:`. `plan.py status` reports each milestone's open nodes, outlines, and the wave its last node lands in.
 - **Refinement happens as work approaches.** `plan.py <root> refine` lists outline nodes within the next two waves (`--horizon N` to change it). Break each into one or more full briefs at that point, using what the finished nodes taught. The curator does this at every checkpoint, so outlines become briefs a little ahead of the agents.
 
+### Stories: one feature, one branch
+
+A request like "add a sign-in form" is one feature to the user, but often several nodes of work. Make it a story: a `type: story` node whose brief holds the feature's goal and acceptance, with child nodes that set `story: <story id>`. The story is a small roadmap on one feature branch:
+
+- The story branch is `feat/<story id>`, cut from the story's target (the main branch, or `dev` with a branch policy).
+- Each child is a normal node with its own brief, worker, worktree and review. Its pull request targets the story branch, so children run in parallel and build on each other there.
+- When every child is done, the story itself is one pull request from the story branch into its target. The maintainer reviews the feature as a whole. By default the orchestrator merges children into the story branch itself (`merge.stories: auto`), since nothing reaches the main branch without the story pull request.
+- **Early children.** Some children must land on the parent branch before the story: a split of a hot file, a fix to a bug on the base, a dependency bump, or a contract that nodes outside the story use. Mark them `early: true`. Their pull requests target the story's target branch, and the story branch merges them in after they land. An early child cannot need a child that is not early.
+- **From outside the story**, a dependency on a child waits for the whole story. The same holds for a contract a child freezes. That code is only on the story branch until the story merges, and `plan.py` schedules it that way. If an outside node only needs one child, make that child `early`.
+- A story's own dependencies apply to all its children. Children take the story's priority and milestone when theirs are empty.
+
+Use a story when the feature should reach users in one piece and its parts do not make sense alone. Keep separate top-level nodes when each part is useful on its own: they ship sooner. A far-off story can stay `outline: true` with no children; `plan.py refine` lists it when it is near, and refining it means writing its children. Stories do not nest.
+
 For each detailed node, write `nodes/<id>/brief.md` with priority, typed dependencies, owned paths (globs), size, acceptance criteria and a `verify` command when the acceptance can be checked by one. Keep briefs short: what the worker cannot get from the contracts and dependency outcomes, and nothing else. Then:
 
 1. Prefer vertical slices over horizontal layers. "Login, full stack" runs beside "signup, full stack". "UI, then API, then DB" is a chain.
@@ -168,11 +182,12 @@ Read `references/orchestration.md` before this step. In short:
 
 1. `plan.py <root> refine` lists outline nodes that are about to be needed; break them into briefs first. `plan.py <root> verify` closes todo nodes whose acceptance already holds. Then `plan.py <root> ready --json` lists the nodes to start.
 2. Set each one to `status: active` and commit that. The orchestrator is the only writer of `status`.
-3. Spawn one agent per node with `isolation: worktree`, using `templates/worker-prompt.md` and the model the script suggests. Spawn them in one message so they run at the same time. In sequential mode (`mode` in `ready --json`), start only the first node, and the worktree is optional (see "Sequential mode" in `references/orchestration.md`). Each worker first checks whether its work already exists, then builds and opens one pull request against the node's target branch (`target` in `ready --json`, or the main branch when there is no branch policy).
-4. Each pull request is reviewed once and checked once, as the `review` field of `ready --json` says (set by `review:` in `GOAL.md`, default `auto`). In `fresh` mode the orchestrator spawns one reviewer with the pr-review skill. In `self` mode the worker reviews its own branch. The orchestrator works from the replies and the script output, and does not review or check a second time. Then the pull request goes to the maintainer, unless the roadmap's `merge:` policy in `GOAL.md` is `auto` and `plan.py <root> can-merge` allows it, in which case the orchestrator merges it (see "Auto-merge" in `references/orchestration.md`). Agents never approve their own work. A node is `done` when its pull request merges. Run the curator (phase 7) at checkpoints.
-5. Stop at gates. At checkpoints, end the session to keep the orchestrator's context small. The next session resumes from the repo (see "Keeping the orchestrator's context small" in `references/orchestration.md`). Then go back to step 1.
+3. Before the first child of a story starts, create the story branch from the story's target and set the story to `status: active`. A ready node with `"action": "story-pr"` is a story whose children are all done: open its pull request yourself, without a worker (see "Stories" in `references/orchestration.md`).
+4. Spawn one agent per node with `isolation: worktree`, using `templates/worker-prompt.md` and the model the script suggests. Spawn them in one message so they run at the same time. In sequential mode (`mode` in `ready --json`), start only the first node, and the worktree is optional (see "Sequential mode" in `references/orchestration.md`). Each worker first checks whether its work already exists, then builds and opens one pull request against the node's target branch (`target` in `ready --json`, or the main branch when there is no branch policy).
+5. Each pull request is reviewed once and checked once, as the `review` field of `ready --json` says (set by `review:` in `GOAL.md`, default `auto`). In `fresh` mode the orchestrator spawns one reviewer with the pr-review skill. In `self` mode the worker reviews its own branch. The orchestrator works from the replies and the script output, and does not review or check a second time. Then the pull request goes to the maintainer, unless the roadmap's `merge:` policy in `GOAL.md` is `auto` and `plan.py <root> can-merge` allows it, in which case the orchestrator merges it (see "Auto-merge" in `references/orchestration.md`). Agents never approve their own work. A node is `done` when its pull request merges. Run the curator (phase 7) at checkpoints.
+6. Stop at gates. At checkpoints, end the session to keep the orchestrator's context small. The next session resumes from the repo (see "Keeping the orchestrator's context small" in `references/orchestration.md`). Then go back to step 1.
 
-One pull request per node is the default, because every piece of work then merges on its own and nothing waits for a large integration branch. Use a single integration branch only when the user asks for it.
+One pull request per node is the default, because every piece of work then merges on its own and nothing waits for a large integration branch. A story is the exception: a feature branch scoped to one feature, which merges as soon as that feature is done. Use a branch for the whole roadmap only when the user asks for it.
 
 For long roadmaps, `scripts/wave.workflow.js` runs one wave as a Workflow (fan-out plus curator), driven by the `ready --json` output.
 
@@ -201,16 +216,17 @@ New ideas arrive while waves are running. That is normal, and the graph makes it
 
 ## Upgrade a roadmap made with an older version
 
-Every field added since the first version is optional, so an old roadmap still loads. Upgrading is a short pass that changes no work, only how the plan is described. Do it in this order, and show the user the proposals in steps 3 and 4 before writing them, because they change how the plan reads:
+Every field added since the first version is optional, so an old roadmap still loads. Upgrading is a short pass that changes no work, only how the plan is described. Do it in this order, and show the user the proposals in steps 3, 4 and 6 before writing them, because they change how the plan reads:
 
 1. Run `plan.py <root> status` with the current script and note the new warnings (hot files, merge orders for shared files). Fix errors first; warnings can wait for the user.
 2. Give `GOAL.md` a frontmatter block if it has none. Keep its body as it is.
 3. **Milestones.** Propose a `milestones:` list (releases, quarters, or whatever stages the user talks about) and a `milestone:` for each open node. Done nodes can stay untagged.
 4. **Outlines.** Propose `outline: true` for todo nodes that will not start within the next two or three waves and whose briefs are mostly guesswork. Keep their text as notes; it is rewritten when `plan.py refine` lists them. Leave active, done and near nodes alone.
 5. **Branches.** If the repo has more than one integration branch (pr-review's `branch_policy.py` tells), add the `branches:` map to `GOAL.md` and a `type:` to each open node.
-6. **Coverage.** If the roadmap was imported from existing documents, add the "Coverage" section to `GOAL.md` and map every source step.
-7. Where they help, add `verify:` commands, `exclusive:` tags for single-use resources, and `fulfilled_by:` on nodes that turn out to be done already (`plan.py verify` finds candidates).
-8. Run `plan.py <root> check`, then show the user `plan.py <root> overview`.
+6. **Stories.** Look for groups of todo nodes that together make one user-facing feature and do not make sense shipped apart. Propose a `type: story` node for each group and `story:` on its members. Leave active and done nodes out.
+7. **Coverage.** If the roadmap was imported from existing documents, add the "Coverage" section to `GOAL.md` and map every source step.
+8. Where they help, add `verify:` commands, `exclusive:` tags for single-use resources, and `fulfilled_by:` on nodes that turn out to be done already (`plan.py verify` finds candidates).
+9. Run `plan.py <root> check`, then show the user `plan.py <root> overview`.
 
 Never change `status` fields or the briefs of active nodes during an upgrade.
 

@@ -9,7 +9,10 @@ merge:
   mode: maintainer
   # method: squash
   # max_size: M
-  # exclude: [release, hotfix, contract, gate]
+  # exclude: [release, hotfix, contract, gate, story]
+  # Children of a story merge into the story branch. auto (the default): the orchestrator merges them
+  # when `plan.py can-merge` allows it, and the maintainer reviews the story's pull request.
+  # stories: auto
 branches:
   # Leave this empty when every pull request targets one branch.
   # For gitflow-style repos, fill it from pr-review's branch_policy.py, for example:

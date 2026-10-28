@@ -8,10 +8,11 @@ export const meta = {
   ],
 }
 
-// args: { root, skill, base, nodes: [{ id, title, model, branch, pr_title, mode, review, context: [paths] }],
-//         sequential?, isolation? }
+// args: { root, skill, base, nodes: [{ id, title, model, branch, pr_title, mode, review, target, story, action,
+//         context: [paths] }], sequential?, isolation? }
 // `base` is the branch pull requests target (usually main). Check it out before running,
-// so worktrees start from it. `sequential: true` (or `mode: sequential` on the nodes) runs
+// so worktrees start from it. A node with a `target` (a story child) builds on that branch instead.
+// Nodes with `action: story-pr` are skipped: the orchestrator opens a story's pull request itself. `sequential: true` (or `mode: sequential` on the nodes) runs
 // the workers one after another. `isolation: 'none'` then runs them in the current checkout
 // instead of worktrees; only use it when the tree is clean and the user agreed. Each worker reviews
 // its own pull request in its `review` mode. The orchestrator merges, updates status and handles gates
@@ -62,7 +63,11 @@ const CURATION = {
   required: ['learnings', 'brief_updates', 'change_requests', 'new_nodes', 'calibration', 'report'],
 }
 
-const { root, skill, base, nodes } = args
+const { root, skill, base } = args
+const stories = (args.nodes || []).filter(n => n.action === 'story-pr').map(n => n.id)
+if (stories.length) log(`Stories ready for their pull request, not run here: ${stories.join(', ')}`)
+const nodes = (args.nodes || []).filter(n => n.action !== 'story-pr')
+const baseOf = n => n.target || base
 const sequential = args.sequential === true || (Array.isArray(nodes) && nodes.some(n => n.mode === 'sequential'))
 const isolation = sequential && args.isolation === 'none' ? 'none' : 'worktree'
 if (!Array.isArray(nodes) || nodes.length === 0) {
@@ -76,8 +81,8 @@ function workerPrompt(n) {
     : 'Several other agents are working on other nodes at the same time, each in its own git worktree.'} Your work must stay inside your own node so that everyone's branches merge cleanly.
 
 ${isolation === 'none'
-    ? `You work in the main checkout, not a worktree. Start your branch: \`git fetch\`, then \`git switch -c ${n.branch || 'feat/' + n.id} ${base}\`. When you are done, switch back to \`${base}\`.`
-    : `First give your branch a descriptive name: \`git branch -m ${n.branch || 'feat/' + n.id}\` (your worktree may start on a generated name such as worktree-agent-...).`} Use "${n.pr_title || n.title}" as the pull request title, following the repo's own title convention if it differs.
+    ? `You work in the main checkout, not a worktree. Start your branch: \`git fetch\`, then \`git switch -c ${n.branch || 'feat/' + n.id} ${baseOf(n)}\`. When you are done, switch back to \`${base}\`.`
+    : `First give your branch a descriptive name: \`git branch -m ${n.branch || 'feat/' + n.id}\` (your worktree may start on a generated name such as worktree-agent-...).${baseOf(n) !== base ? ` Your work builds on \`${baseOf(n)}\`, the branch of story ${n.story}: run \`git reset --hard ${baseOf(n)}\` before your first commit.` : ''}`} Use "${n.pr_title || n.title}" as the pull request title, following the repo's own title convention if it differs.
 
 Read these files in this order. They are all the context you need; do not read other nodes' logs.
 ${n.context.map(p => `- ${p}`).join('\n')}
@@ -96,7 +101,7 @@ Then:
 10. ${(n.review || 'fresh') === 'self'
     ? "Review the branch yourself, as step 6 of the pr-author skill describes: read your own diff as a reviewer would, go through pr-review's references/evaluation.md, and run the full checks once. Fix what you find, for at most two rounds. Report review_mode self, review_rounds, review_clean and checks_pass."
     : 'Do not review the branch: a fresh reviewer runs after you. Report review_mode none, review_rounds 0, review_clean false, and checks_pass for the fast check.'}
-11. Push the branch and open a pull request against \`${base}\` (follow the pr-author skill if it is installed). Link \`${root}/nodes/${n.id}/brief.md\` in the description. Do not merge or approve it. Report its number as pr, or "" if you made no pull request.`
+11. Push the branch and open a pull request against \`${baseOf(n)}\` (follow the pr-author skill if it is installed). Link \`${root}/nodes/${n.id}/brief.md\` in the description. Do not merge or approve it. Report its number as pr, or "" if you made no pull request.`
 }
 
 function runWorker(n) {
@@ -126,7 +131,7 @@ const REVIEW = {
 async function workAndReview(n) {
   const r = await runWorker(n)
   if (!r || r.already_fulfilled || (n.review || 'fresh') === 'self') return r
-  const review = await agent(`Review ${r.branch} against ${base} in the current repo with the pr-review skill, in local mode. Do not post anything. Return the verdict, whether the full checks pass, and the findings, sorted into blocking, should fix, nits, and bugs found on the base.`,
+  const review = await agent(`Review ${r.branch} against ${baseOf(n)} in the current repo with the pr-review skill, in local mode. Do not post anything. Return the verdict, whether the full checks pass, and the findings, sorted into blocking, should fix, nits, and bugs found on the base.`,
     { label: `review:${n.id}`, phase: 'Work', schema: REVIEW })
   if (!review) return r
   return {

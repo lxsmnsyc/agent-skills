@@ -3,6 +3,8 @@
 
 Reads <root>/nodes/*/brief.md and <root>/contracts/*.md frontmatter. Stdlib only.
 With `release:` in GOAL.md, nodes of later milestones are held until the first open release ships.
+A `type: story` node groups child nodes (`story: <id>`) on one feature branch: the children's pull
+requests target the story branch, and the story itself is one pull request into the parent branch.
 
 Usage:
   plan.py <root> status            # check + waves + critical path (default)
@@ -35,7 +37,8 @@ DEFAULT_MODEL = {"S": "sonnet", "M": "sonnet", "L": "opus", "XL": "opus"}
 KINDS = {"contract", "behavior", "hard"}
 STATUSES = {"todo", "active", "done", "released", "dropped"}
 DONE = {"done", "released"}
-TYPES = {"feature", "fix", "hotfix", "refactor", "docs", "chore", "release", "spike", "contract", "experiment"}
+TYPES = {"feature", "fix", "hotfix", "refactor", "docs", "chore", "release", "spike", "contract",
+         "experiment", "story"}
 # must: needed for the goal now. should: important, but the goal can ship without it.
 # could: worth doing when capacity is free. later: parked, not scheduled.
 PRIORITIES = {"must": 0, "should": 1, "could": 2, "later": 3}
@@ -164,7 +167,7 @@ def archived_node(root, nid, entry):
         "reserves": [], "added": None, "exclusive": [], "verify": None, "hypothesis": None,
         "fulfilled_by": entry.get("ref"), "type": None, "target": None, "from": None,
         "outline": False, "milestone": entry.get("milestone"), "archived": True,
-        "spent": int(entry.get("spent") or 0),
+        "spent": int(entry.get("spent") or 0), "story": None, "early": False,
     }
 
 
@@ -183,7 +186,7 @@ def load(root):
             "dirname": brief.parent.name,
             "title": fm.get("title") or nid,
             "status": fm.get("status") or "todo",
-            "priority": fm.get("priority") or "should",
+            "priority": fm.get("priority") or None,
             "size": fm.get("size"),
             "model": fm.get("model"),
             "spike": bool(fm.get("spike")),
@@ -205,7 +208,10 @@ def load(root):
             "target": fm.get("target") or None,
             "from": fm.get("from") or None,
             "outline": bool(fm.get("outline")),
-            "milestone": str(fm["milestone"]) if fm.get("milestone") not in (None, "") else None,
+            "milestone": str(fm["milestone"]) if fm.get("milestone") not in (None, "", []) else None,
+            # Story children: the story they belong to, and whether they land on the parent branch first.
+            "story": str(fm["story"]) if fm.get("story") not in (None, "", []) else None,
+            "early": bool(fm.get("early")),
             "archived": False,
         }
     for nid, entry in read_archive(root).items():
@@ -213,6 +219,7 @@ def load(root):
             errors.append(f"node {nid}: in archive.md and in nodes/; remove one")
             continue
         nodes[nid] = archived_node(root, nid, entry)
+    link_stories(nodes)
     for path in sorted((root / "contracts").glob("*.md")):
         if path.name.endswith(".change-request.md"):
             continue
@@ -230,6 +237,20 @@ def load(root):
             "defined_by": fm.get("defined_by"),
         }
     return nodes, contracts, errors
+
+
+def link_stories(nodes):
+    """Give each story its children. Children take the story's priority and milestone when they set none."""
+    for n in nodes.values():
+        n["children"] = []
+    for k, n in nodes.items():
+        s = nodes.get(n["story"])
+        if s and s["type"] == "story" and k != s["id"]:
+            s["children"].append(k)
+            n["priority"] = n["priority"] or s["priority"]
+            n["milestone"] = n["milestone"] or s["milestone"]
+    for n in nodes.values():
+        n["priority"] = n["priority"] or "should"
 
 
 # ---------------------------------------------------------------------------
@@ -389,12 +410,30 @@ def release_fence(nodes, milestones, release):
 
 
 def apply_targets(nodes, policy):
-    """The branch each node's pull request targets: its own `target`, else the policy for its type."""
+    """The branch each node's pull request targets: its own `target`, else the policy for its type.
+
+    Story children target the story branch. Early children target the story's own target.
+    """
     for n in nodes.values():
         t = n["target"]
         if not t and policy:
             t = policy.get(n["type"] or "feature") or policy.get("feature") or policy.get("default")
         n["target_eff"] = t
+    for n in nodes.values():
+        s = story_of(n, nodes)
+        if s and not n["target"]:
+            n["target_eff"] = s["target_eff"] if n["early"] else branch_name(s)
+
+
+def story_of(n, nodes):
+    """The story node `n` belongs to, or None."""
+    s = nodes.get(n["story"])
+    return s if s and s["type"] == "story" and s["id"] != n["id"] else None
+
+
+def on_story_branch(n, nodes):
+    """True when `n` merges into its story's branch, so other work sees it only once the story merges."""
+    return story_of(n, nodes) is not None and not n["early"]
 
 
 def policy_branches(policy):
@@ -408,8 +447,8 @@ def live(nodes):
     return {k: n for k, n in nodes.items() if n["status"] != "dropped"}
 
 
-def start_preds(node, nodes, contracts):
-    """Nodes that must finish before `node` can start."""
+def dep_preds(node, nodes, contracts):
+    """Nodes named by the node's own dependencies that must finish before it starts."""
     preds = set()
     for d in node["deps"]:
         if not isinstance(d, dict):
@@ -419,10 +458,42 @@ def start_preds(node, nodes, contracts):
             preds.add(d["on"])
         elif kind in ("contract", "behavior"):
             c = contracts.get(d.get("via"))
-            if c and c["status"] != "frozen" and c["defined_by"] in nodes:
+            if not c or c["defined_by"] not in nodes:
+                continue
+            # A contract frozen on a story branch is not on the parent branch until the story merges.
+            if c["status"] != "frozen" or (on_story_branch(nodes[c["defined_by"]], nodes)
+                                           and node["story"] != nodes[c["defined_by"]]["story"]):
                 preds.add(c["defined_by"])
+    return preds
+
+
+def through_story(preds, node, nodes):
+    """Replace children of other stories with the story: their code reaches other work when it merges."""
+    out = set()
+    for p in preds:
+        s = story_of(nodes[p], nodes)
+        if s and on_story_branch(nodes[p], nodes) and node["story"] != s["id"] and node["id"] != s["id"]:
+            out.add(s["id"])
+        else:
+            out.add(p)
+    return out
+
+
+def start_preds(node, nodes, contracts):
+    """Nodes that must finish before `node` can start.
+
+    A story starts its pull request after all its children. A child starts after the story's
+    own dependencies.
+    """
+    preds = dep_preds(node, nodes, contracts)
+    if node["type"] == "story":
+        preds |= set(node.get("children", []))
+    s = story_of(node, nodes)
+    if s:
+        preds |= dep_preds(s, nodes, contracts)
+    preds = through_story(preds, node, nodes)
     preds.discard(node["id"])
-    return {p for p in preds if nodes[p]["status"] != "dropped"}
+    return {p for p in preds if p in nodes and nodes[p]["status"] != "dropped"}
 
 
 def all_preds(node, nodes, contracts):
@@ -439,10 +510,10 @@ def all_preds(node, nodes, contracts):
 
 def integration_preds(node, nodes):
     """Nodes whose real behavior `node` was built against a stub of."""
-    return {
+    return through_story({
         d["on"] for d in node["deps"]
         if isinstance(d, dict) and d.get("kind") == "behavior" and d.get("on") in nodes
-    }
+    }, node, nodes)
 
 
 def effective_priority(nodes, contracts):
@@ -453,10 +524,12 @@ def effective_priority(nodes, contracts):
     lv = live(nodes)
     eff = {k: (PRIORITIES.get(n["priority"], 1), None) for k, n in lv.items()}
     needs = {k: start_preds(n, lv, contracts) | integration_preds(n, lv) for k, n in lv.items()}
+    # Stories first, so a dependency the children inherit is reported as the story's.
+    order = sorted(needs.items(), key=lambda kv: lv[kv[0]]["type"] != "story")
     changed = True
     while changed:
         changed = False
-        for k, ps in needs.items():
+        for k, ps in order:
             for p in ps:
                 if p in eff and eff[k][0] < eff[p][0]:
                     eff[p] = (eff[k][0], k)
@@ -466,7 +539,7 @@ def effective_priority(nodes, contracts):
 
 def levels(lv, succs, pending):
     """Bottom level: the longest weighted path from a node to the end of the graph."""
-    points = {k: SIZE_POINTS.get(lv[k]["size"], 2) for k in lv}
+    points = {k: 1 if lv[k].get("children") else SIZE_POINTS.get(lv[k]["size"], 2) for k in lv}
     level = {}
 
     def bottom(k):
@@ -591,7 +664,7 @@ def check(nodes, contracts, load_errors, policy=None, milestones=None, release=N
         for nid, n in live(nodes).items():
             if n["type"] and n["type"] not in TYPES:
                 warnings.append(f"node {nid}: type '{n['type']}' not in {sorted(TYPES)}")
-            if n.get("target_eff") and n["target_eff"] not in known:
+            if n.get("target_eff") and n["target_eff"] not in known and not on_story_branch(n, nodes):
                 warnings.append(f"node {nid}: targets '{n['target_eff']}', which is not a branch "
                                 f"in the policy ({', '.join(sorted(known))})")
     for nid, n in live(nodes).items():
@@ -628,6 +701,40 @@ def check(nodes, contracts, load_errors, policy=None, milestones=None, release=N
                             f"wait for its open nodes: {', '.join(unshipped)}")
     if release and not milestones:
         warnings.append("GOAL.md sets `release:` but no `milestones:`; releases are planned per milestone")
+    for nid, n in live(nodes).items():
+        if n["story"]:
+            s = nodes.get(n["story"])
+            if not s:
+                errors.append(f"node {nid}: story '{n['story']}' is not a node")
+            elif s["type"] != "story":
+                errors.append(f"node {nid}: story '{n['story']}' is not a `type: story` node")
+            elif n["type"] == "story":
+                errors.append(f"node {nid}: a story cannot belong to another story; "
+                              "make it a child node, or make both stories top-level")
+            elif n["type"] == "release":
+                errors.append(f"node {nid}: a release node cannot belong to a story")
+            elif s["status"] == "dropped":
+                warnings.append(f"node {nid}: its story '{n['story']}' is dropped")
+            elif n["milestone"] != s["milestone"]:
+                warnings.append(f"node {nid}: milestone '{n['milestone']}' differs from its story's "
+                                f"('{s['milestone']}'); the story ships all its children at once")
+        elif n["early"]:
+            warnings.append(f"node {nid}: `early` only applies to a story's children")
+        if n["type"] == "story" and n["status"] not in DONE:
+            open_kids = [k for k in n["children"] if nodes[k]["status"] != "dropped"]
+            if not open_kids and not n["outline"]:
+                warnings.append(f"node {nid}: a story with no child nodes; break it into children "
+                                "(`story: " + nid + "`), mark it `outline: true`, or make it a plain node")
+            elif open_kids and n["outline"]:
+                warnings.append(f"node {nid}: an outline story with child nodes; set `outline: false`")
+        if n["early"] and story_of(n, nodes) and n["status"] not in DONE:
+            late = sorted(p for p in dep_preds(n, nodes, contracts)
+                          if p in live(nodes) and nodes[p]["story"] == n["story"]
+                          and on_story_branch(nodes[p], nodes))
+            if late:
+                errors.append(f"node {nid}: lands early on the parent branch but needs "
+                              f"{', '.join(late)}, which merge only into the story branch; "
+                              "make those early too, or drop `early`")
     for nid, n in nodes.items():
         where = f"node {nid}"
         if n["dirname"] != nid:
@@ -640,12 +747,14 @@ def check(nodes, contracts, load_errors, policy=None, milestones=None, release=N
             errors.append(f"{where}: priority must be one of must, should, could, later")
         if n["size"] not in SIZE_POINTS:
             errors.append(f"{where}: size must be one of S, M, L, XL")
-        elif n["size"] == "XL" and n["status"] == "todo" and not n["outline"]:
+        elif n["size"] == "XL" and n["status"] == "todo" and not n["outline"] and not n["children"]:
             warnings.append(f"{where}: size XL, split it before scheduling")
-        if not n["owns"] and n["type"] != "release" and not n["outline"]:
+        if not n["owns"] and n["type"] not in ("release", "story") and not n["outline"]:
             warnings.append(f"{where}: no owned paths, conflicts cannot be detected")
-        if (n["status"] in DONE and not n["fulfilled_by"]
-                and not (n["dir"] / "outcome.md").exists()):
+        # A child's outcome is on the story branch until the story merges.
+        in_open_story = on_story_branch(n, nodes) and nodes[n["story"]]["status"] not in DONE
+        if (n["status"] in DONE and not n["fulfilled_by"] and n["type"] != "story"
+                and not in_open_story and not (n["dir"] / "outcome.md").exists()):
             warnings.append(f"{where}: done but has no outcome.md or fulfilled_by")
         for c in n["provides"]:
             if c not in contracts:
@@ -702,6 +811,9 @@ def check(nodes, contracts, load_errors, policy=None, milestones=None, release=N
         lv = live(nodes)
         for k, n in lv.items():
             waiting = sorted(p for p in start_preds(n, lv, contracts) if lv[p]["status"] not in DONE)
+            if n["status"] == "active" and n["type"] == "story":
+                # An active story has its branch open while its children run.
+                waiting = [p for p in waiting if p not in n["children"]]
             if (n["status"] == "active" or n["status"] in DONE) and waiting:
                 warnings.append(f"node {k}: {n['status']} but its start dependencies are not done: "
                                 + ", ".join(waiting))
@@ -748,7 +860,9 @@ def schedule(nodes, contracts, max_parallel, upto="could"):
         avail.sort(key=lambda k: (lv[k]["status"] != "active", eff[k][0], -level[k], k))
         wave, conflicts = [], []
         for k in avail:
-            if len(wave) >= max_parallel and lv[k]["status"] != "active":
+            # A story's own pull request needs no worker, so it takes no slot.
+            busy = sum(1 for o in wave if lv[o]["type"] != "story")
+            if busy >= max_parallel and lv[k]["status"] != "active" and lv[k]["type"] != "story":
                 continue
             clash = next(((o, wave_conflict(lv[k], lv[o])) for o in wave
                           if wave_conflict(lv[k], lv[o])), None)
@@ -834,7 +948,8 @@ def ready(nodes, contracts, upto="could", held=None):
     pending = {k for k, n in lv.items() if n["status"] not in DONE}
     level, _ = levels(lv, succs, pending)
     out = [k for k, n in lv.items()
-           if n["status"] == "todo" and n["size"] != "XL" and not n["outline"]
+           if (n["status"] == "todo" or (n["status"] == "active" and n["type"] == "story"))
+           and (n["size"] != "XL" or n["children"]) and not n["outline"]
            and eff[k][0] <= PRIORITIES[upto] and k not in (held or {})
            and all(lv[p]["status"] in DONE for p in preds[k])]
     return sorted(out, key=lambda k: (eff[k][0], -level[k], k))
@@ -957,6 +1072,11 @@ def overview(root, nodes, contracts, s, milestones, warnings, release=None, held
             bits.append(f"-> {n['target_eff']}")
         if n["outline"]:
             bits.append("outline")
+        if n["children"]:
+            kids = [c for c in n["children"] if lv.get(c)]
+            bits.append(f"story, {sum(lv[c]['status'] in DONE for c in kids)}/{len(kids)} children done")
+        if n["early"] and story_of(n, nodes):
+            bits.append("early")
         if k in held:
             bits.append(f"held for {held[k]}")
         if n["status"] in ("active", "released"):
@@ -969,6 +1089,8 @@ def overview(root, nodes, contracts, s, milestones, warnings, release=None, held
 
     groups = {}
     for k, n in lv.items():
+        if story_of(n, nodes) and n["story"] in lv:
+            continue  # listed under its story
         groups.setdefault(n["milestone"] or "", []).append(k)
     order = list(milestones or []) + sorted(g for g in groups if g and g not in (milestones or []))
     if "" in groups:
@@ -979,7 +1101,12 @@ def overview(root, nodes, contracts, s, milestones, warnings, release=None, held
         out.append(f"## {name}" if name else ("## Other work" if len(groups) > 1 else "## Work"))
         ids = sorted(groups[name], key=lambda k: (lv[k]["status"] not in DONE,
                                                   wave_of.get(k, 99), PRIORITIES.get(lv[k]["priority"], 1), k))
-        out += [line(k) for k in ids] + [""]
+        for k in ids:
+            out.append(line(k))
+            kids = sorted((c for c in lv[k]["children"] if c in lv),
+                          key=lambda c: (lv[c]["status"] not in DONE, wave_of.get(c, 99), c))
+            out += ["  " + line(c) for c in kids]
+        out.append("")
     if warnings:
         out.append(f"**Warnings ({len(warnings)}):** run `plan.py check` for the list.")
     return "\n".join(out).rstrip() + "\n"
@@ -987,7 +1114,7 @@ def overview(root, nodes, contracts, s, milestones, warnings, release=None, held
 
 SIZE_ORDER = ["S", "M", "L", "XL"]
 MERGE_DEFAULTS = {"mode": "maintainer", "method": "squash", "max_size": "M",
-                  "exclude": ["release", "hotfix", "contract", "gate"]}
+                  "exclude": ["release", "hotfix", "contract", "gate", "story"], "stories": "auto"}
 
 
 def merge_policy(root):
@@ -1041,7 +1168,9 @@ def can_merge(nid, nodes, policy, review_clean, checks_pass, proof, files, ci_gu
     """
     n = nodes[nid]
     reasons = []
-    if policy.get("mode") != "auto":
+    # A child merging into its story branch reaches the maintainer in the story's pull request.
+    child = on_story_branch(n, nodes)
+    if policy.get("mode") != "auto" and not (child and policy.get("stories") == "auto"):
         reasons.append("merge mode is maintainer")
     excluded = set(policy.get("exclude") or [])
     if n["type"] and n["type"] in excluded:
@@ -1066,18 +1195,22 @@ def can_merge(nid, nodes, policy, review_clean, checks_pass, proof, files, ci_gu
         reasons.append("the checks did not pass")
     if (n["type"] in ("fix", "hotfix")) and not proof:
         reasons.append("a fix needs proof: fails on base, passes on head")
-    if held_by:
+    if held_by and not child:
         reasons.append(f"waits for release {held_by}: merging now would ship it in that release")
     if ci_guard != "safe":
         reasons.append("merging would start billed CI on a private repo (ci_guard says ask)")
     allowed = n["owns"] + n["shared"]
+    for k in n.get("children", []):
+        allowed += nodes[k]["owns"] + nodes[k]["shared"]
     outside = [f for f in files
-               if not fnmatch.fnmatch(f, f"*nodes/{nid}/*")
+               if not any(fnmatch.fnmatch(f, f"*nodes/{k}/*") for k in [nid] + n.get("children", []))
                and not any(fnmatch.fnmatch(f, g) or paths_overlap(f, g) for g in allowed)]
     if outside:
         reasons.append("changes outside the node's paths: " + ", ".join(outside[:5]))
+    # Children merge into the story branch without squashing, so the story keeps one commit per child.
+    method = "merge" if child else policy.get("method", "squash")
     return {"node": nid, "verdict": "maintainer" if reasons else "auto", "reasons": reasons,
-            "method": policy.get("method", "squash")}
+            "method": method}
 
 
 def archive_candidates(nodes, contracts):
@@ -1129,10 +1262,10 @@ def apply_archive(root, nodes, ids):
 
 BRANCH_PREFIX = {"feature": "feat", "fix": "fix", "hotfix": "hotfix", "refactor": "refactor",
                  "docs": "docs", "chore": "chore", "release": "release", "spike": "spike",
-                 "contract": "feat", "experiment": "experiment"}
+                 "contract": "feat", "experiment": "experiment", "story": "feat"}
 TITLE_PREFIX = {"feature": "feat", "fix": "fix", "hotfix": "fix", "refactor": "refactor",
                 "docs": "docs", "chore": "chore", "release": "chore", "spike": "chore",
-                "contract": "feat", "experiment": "chore"}
+                "contract": "feat", "experiment": "chore", "story": "feat"}
 
 
 def branch_name(n):
@@ -1164,6 +1297,11 @@ def context_files(root, nid, nodes, contracts):
     add("L0", root / "GOAL.md", "roadmap goal and constraints")
     add("L0", root / "CLAUDE.md", "roadmap conventions")
     add("L1", n["dir"] / "brief.md", "this node")
+    s = story_of(n, nodes)
+    if s:
+        add("L1", s["dir"] / "brief.md", f"story {s['id']}, which this node is part of")
+    for k in n.get("children", []):
+        add("L2", nodes[k]["dir"] / "outcome.md", f"outcome of child {k}")
     for d in n["deps"]:
         if not isinstance(d, dict):
             continue
@@ -1208,7 +1346,7 @@ def print_schedule(s, nodes):
             pri = s["priority"][k]
             tgt = f" -> {n['target_eff']}" if n.get("target_eff") else ""
             tags = [pri if pri == n["priority"] else f"{pri} (was {n['priority']})",
-                    n["size"] or "?", model_for(n)]
+                    n["size"] or "?", "no worker" if n["children"] else model_for(n)]
             if n["status"] == "active":
                 tags.append("active")
             if n["size"] == "XL" and not n["outline"]:
@@ -1217,6 +1355,10 @@ def print_schedule(s, nodes):
                 tags.append("spike")
             if n["outline"]:
                 tags.append("outline")
+            if n["type"] == "story":
+                tags.append("story")
+            elif story_of(n, nodes):
+                tags.append(f"story {n['story']}" + (", early" if n["early"] else ""))
             if n["gate"]:
                 tags.append("gate")
             print(f"  {k}  [{', '.join(tags)}]{tgt}  {n['title']}")
@@ -1412,6 +1554,9 @@ def main():
             print(json.dumps([{
                 "id": k, "title": nodes[k]["title"], "size": nodes[k]["size"],
                 "priority": nodes[k]["priority"],
+                # build: spawn a worker. story-pr: open the story branch's pull request, no worker.
+                "action": "story-pr" if nodes[k]["type"] == "story" else "build",
+                "story": nodes[k]["story"] if story_of(nodes[k], nodes) else None,
                 "target": nodes[k].get("target_eff"),
                 "branch": branch_name(nodes[k]),
                 "pr_title": pr_title(nodes[k]),
@@ -1426,7 +1571,12 @@ def main():
         else:
             for k in ids:
                 hold = f", held for {held[k]}" if k in held else ""
-                print(f"{k}  [{nodes[k]['size']}, {model_for(nodes[k])}, {review_mode(nodes[k], rs)} review{hold}]  {nodes[k]['title']}")
+                if nodes[k]["type"] == "story":
+                    print(f"{k}  [story pull request {branch_name(nodes[k])} -> "
+                          f"{nodes[k].get('target_eff') or 'main'}]  {nodes[k]['title']}")
+                    continue
+                part = f", story {nodes[k]['story']}" if story_of(nodes[k], nodes) else ""
+                print(f"{k}  [{nodes[k]['size']}, {model_for(nodes[k])}, {review_mode(nodes[k], rs)} review{hold}{part}]  {nodes[k]['title']}")
             if not ids:
                 print("nothing ready")
             elif mode == "sequential":
