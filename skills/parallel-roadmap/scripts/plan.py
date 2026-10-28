@@ -139,7 +139,8 @@ def _command(v):
 
 ARCHIVE_LINE = re.compile(
     r"^- (?P<id>[\w.-]+): (?P<title>.*?) \((?P<status>done|released)"
-    r"(?:, (?P<ref>[^,)]+?))?(?:, milestone (?P<milestone>[^)]+))?\)\s*$")
+    r"(?:, (?P<ref>(?!\d+ tokens)[^,)]+?))?(?:, (?P<spent>\d+) tokens)?"
+    r"(?:, milestone (?P<milestone>[^)]+))?\)\s*$")
 
 
 def read_archive(root):
@@ -163,6 +164,7 @@ def archived_node(root, nid, entry):
         "reserves": [], "added": None, "exclusive": [], "verify": None, "hypothesis": None,
         "fulfilled_by": entry.get("ref"), "type": None, "target": None, "from": None,
         "outline": False, "milestone": entry.get("milestone"), "archived": True,
+        "spent": int(entry.get("spent") or 0),
     }
 
 
@@ -188,6 +190,8 @@ def load(root):
             # An experiment's result goes to the user before anything builds on it.
             "gate": bool(fm.get("gate")) or fm.get("type") == "experiment",
             "hypothesis": fm.get("hypothesis") or None,
+            # Tokens the node took (worker, review, fixes), set by the orchestrator when it closes.
+            "spent": _tokens(fm.get("spent")),
             "deps": [d for d in _as_list(fm.get("depends_on"))],
             "owns": [str(p) for p in _as_list(fm.get("owns"))],
             "shared": [str(p) for p in _as_list(fm.get("shared"))],
@@ -231,6 +235,52 @@ def load(root):
 # ---------------------------------------------------------------------------
 # Graph
 # ---------------------------------------------------------------------------
+
+def _tokens(value):
+    try:
+        return int(str(value).replace("_", "").replace(",", "")) if value not in (None, "") else 0
+    except ValueError:
+        return 0
+
+
+def token_budget(root):
+    """The roadmap's token budget from `budget: {tokens: N}` in GOAL.md, or None."""
+    raw = goal_settings(root).get("budget")
+    if isinstance(raw, dict) and _tokens(raw.get("tokens")):
+        return _tokens(raw.get("tokens"))
+    return None
+
+
+def spend(nodes, budget):
+    """Tokens spent so far, a forecast for the open work at the same rate, and the budget."""
+    lv = live(nodes)
+    done = [n for n in lv.values() if n["status"] in DONE]
+    measured = [n for n in done if n["spent"]]
+    spent = sum(n["spent"] for n in lv.values())
+    open_nodes = [n for n in lv.values() if n["status"] not in DONE]
+    per_node = spent // len(measured) if measured else None
+    forecast = spent + per_node * len(open_nodes) if per_node is not None else None
+    return {"spent": spent, "budget": budget, "per_node": per_node, "forecast": forecast,
+            "done_without_spend": len(done) - len(measured)}
+
+
+def spend_warnings(info):
+    out = []
+    budget = info["budget"]
+    if not budget:
+        return out
+    if info["spent"] >= budget:
+        out.append(f"tokens: spent {info['spent']} of the {budget} budget. Stop and cut scope, "
+                   f"or rerun the goal debate with the actual spend")
+    elif info["spent"] >= budget * 0.8:
+        out.append(f"tokens: spent {info['spent']} of the {budget} budget (over 80%)")
+    elif info["forecast"] and info["forecast"] > budget:
+        out.append(f"tokens: at {info['per_node']} per node, the open work needs about {info['forecast']}, "
+                   f"over the {budget} budget")
+    if info["done_without_spend"]:
+        out.append(f"tokens: {info['done_without_spend']} done nodes have no `spent:`; the forecast leaves them out")
+    return out
+
 
 def goal_settings(root):
     """Frontmatter of GOAL.md, or {}."""
@@ -879,6 +929,11 @@ def overview(root, nodes, contracts, s, milestones, warnings, release=None, held
         out.append(f"**Must line:** all must work placed by wave {s['priority_waves']['must']}")
     if s["critical_path"]:
         out.append(f"**Critical path:** {' -> '.join(s['critical_path'])}")
+    info = spend(nodes, token_budget(root))
+    if info["spent"] or info["budget"]:
+        budget = f" of {info['budget']}" if info["budget"] else ""
+        rate = f", about {info['forecast']} for the whole roadmap at the current rate" if info["forecast"] else ""
+        out.append(f"**Tokens:** {info['spent']} spent{budget}{rate}")
     held = held or {}
     r = next_release(nodes, milestones) if release else None
     if r:
@@ -1056,6 +1111,7 @@ def archive_line(n):
         m = re.search(r"(?<![\w/])#(\d+)\b", outcome.read_text())
         ref = f"#{m.group(1)}" if m else None
     parts = [n["status"]] + ([str(ref)] if ref else []) + \
+        ([f"{n['spent']} tokens"] if n.get("spent") else []) + \
         ([f"milestone {n['milestone']}"] if n["milestone"] else [])
     title = n["title"].replace("(", "[").replace(")", "]")
     return f"- {n['id']}: {title} ({', '.join(parts)})"
@@ -1226,6 +1282,7 @@ def main():
     milestones = goal_milestones(args.root)
     release = release_settings(args.root)
     errors, warnings = check(nodes, contracts, load_errors, policy, milestones, release)
+    warnings += spend_warnings(spend(nodes, token_budget(args.root)))
     held = release_fence(nodes, milestones, release)
 
     if args.command == "check":
@@ -1392,6 +1449,14 @@ def main():
         for n in nodes.values():
             counts[n["status"]] = counts.get(n["status"], 0) + 1
         print("nodes: " + ", ".join(f"{v} {k}" for k, v in sorted(counts.items())))
+        info = spend(nodes, token_budget(args.root))
+        if info["spent"] or info["budget"]:
+            line = f"tokens: {info['spent']} spent"
+            if info["budget"]:
+                line += f" of {info['budget']}"
+            if info["forecast"]:
+                line += f", about {info['forecast']} at the current rate"
+            print(line)
         for r in sorted(set(held.values())):
             print(f"held for release {r}: " + ", ".join(sorted(k for k, x in held.items() if x == r)))
     print_schedule(s, nodes)

@@ -14,7 +14,7 @@ python3 <skill>/scripts/capacity.py                 # how many worktrees this ma
 python3 <skill>/scripts/wt.py new <branch> --base main   # worktree in .worktrees/<branch>, hidden from git status
 python3 <skill>/scripts/wt.py list
 python3 <skill>/scripts/wt.py remove <branch> [--delete-branch]
-python3 <skill>/scripts/wt.py prune-merged --base main [--base dev] [--remote] [--dry-run]
+python3 <skill>/scripts/wt.py prune-merged --base main [--base dev] [--remote] [--agent-worktrees] [--dry-run]
 python3 <skill>/scripts/ci_guard.py                 # will a push start billed CI? exit 2 means ask first
 ```
 
@@ -113,6 +113,8 @@ When the base moves and the PR conflicts, rebase onto the base, resolve the conf
 ### 9. Clean up
 
 After a PR merges, run `wt.py prune-merged` with every integration branch as a `--base` (for example `--base main --base next --base dev`, the branches in the policy's `promote` list). For each merged branch it removes the worktree and the local branch. It asks GitHub for the merged pull request, so squash and rebase merges are found too, and it falls back to commit ancestry without `gh`. It keeps branches with no commits yet, branches with commits newer than their merged PR, and worktrees with uncommitted changes.
+
+Agents started with worktree isolation leave their checkouts in `.claude/worktrees/`, and nothing removes them on its own. Add `--agent-worktrees` to sweep those too. It skips locked worktrees (an agent is still running), worktrees with a commit or checkout in the last 6 hours (`--min-age-hours`), and worktrees with uncommitted changes. It also removes clean detached review checkouts whose commit is in a base. Run it with `--dry-run` first when the machine is short on disk.
 
 The remote branch:
 

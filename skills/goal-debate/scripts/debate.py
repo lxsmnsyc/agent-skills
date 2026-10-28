@@ -4,14 +4,19 @@
 The ledger is <dir>/ledger.json. Stdlib only.
 
 Usage:
-  debate.py <dir> init --goal "..." [--max-rounds 3] [--research]   # write an empty ledger
+  debate.py <dir> init --goal "..." [--max-rounds 3] [--max-tokens N] [--research]
+                       [--roadmap <root>] [--supersedes <earlier debate dir>]   # write an empty ledger
   debate.py <dir> check                               # validation only, exit 1 on errors
   debate.py <dir> status                              # rulings, open questions, next step (default)
+  debate.py <dir> seal                                # freeze the claims of finished rounds
   debate.py <dir> report                              # Markdown summary for debate.md
 Options: --json
+
+With --roadmap the debate weighs an existing roadmap: `cut` claims name its nodes.
 """
 import argparse
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -22,7 +27,9 @@ ROLES = {"proponent", "opponent", "judge"}
 # proposal: a piece of the idea's structure. alternative: another way to reach the goal.
 # cost, risk: what a proposal takes or could break, on one axis. rebuttal: answers other claims.
 # concession: drops or amends a claim of one's own side. fact: a measurement the judge adds.
-KINDS = {"proposal", "alternative", "cost", "risk", "rebuttal", "concession", "fact"}
+# cut: drop, park, merge or outline nodes of an existing roadmap (needs `roadmap` in the ledger).
+KINDS = {"proposal", "alternative", "cost", "risk", "rebuttal", "concession", "fact", "cut"}
+CUT_ACTIONS = {"drop", "park", "merge", "outline"}
 NEEDS_AXIS = {"cost", "risk", "fact"}
 NEEDS_ANSWERS = {"rebuttal", "concession"}
 SEVERITIES = {"low", "medium", "high"}
@@ -40,6 +47,9 @@ PROOF_PENDING = {"planned", "running"}
 MAX_PROOFS = 2
 PROOF_CAP = {"minutes": 30, "tokens": 100000}
 HYPOTHESIS_FIELDS = ("statement", "metric", "baseline", "threshold", "kill")
+# Fields the judge or the user may still change after a round is sealed.
+RULING_FIELDS = {"ruling", "ruling_why", "user_ruling", "user_why"}
+SPEND_WARN = 0.8
 
 
 def ledger_path(root):
@@ -54,6 +64,30 @@ def load(root):
         return json.loads(path.read_text())
     except json.JSONDecodeError as e:
         sys.exit(f"{path}: not valid JSON: {e}")
+
+
+def ruling(claim):
+    """The ruling that counts: the user's when they overruled the judge."""
+    return claim.get("user_ruling") or claim.get("ruling")
+
+
+def sealed_path(root):
+    return root / "sealed.json"
+
+
+def roadmap_nodes(roadmap):
+    """Node id -> status for an existing roadmap, from the briefs and archive.md."""
+    nodes = {}
+    for brief in sorted((roadmap / "nodes").glob("*/brief.md")):
+        text = brief.read_text()
+        nid = re.search(r"^id:\s*(\S+)", text, re.M)
+        status = re.search(r"^status:\s*(\S+)", text, re.M)
+        nodes[nid.group(1) if nid else brief.parent.name] = status.group(1) if status else "todo"
+    archive = roadmap / "archive.md"
+    if archive.is_file():
+        for m in re.finditer(r"^- (\S+?):", archive.read_text(), re.M):
+            nodes.setdefault(m.group(1), "done")
+    return nodes
 
 
 def axes(ledger):
@@ -72,7 +106,7 @@ def last_round(ledger):
     return rounds
 
 
-def check(ledger):
+def check(ledger, root=None):
     errors, warnings = [], []
     claims = ledger.get("claims", [])
     questions = ledger.get("questions", [])
@@ -185,18 +219,113 @@ def check(ledger):
         if kind == "concession" and not claim.get("why"):
             errors.append(f"{cid}: a concession says which claim or evidence changed the side's mind")
 
-        ruling = claim.get("ruling")
-        if ruling not in RULINGS:
+        judged = claim.get("ruling")
+        if judged not in RULINGS:
             errors.append(f"{cid}: ruling must be upheld, rejected, open, or empty")
-        if ruling in ("rejected", "open") and not claim.get("ruling_why"):
-            errors.append(f"{cid}: a {ruling} ruling needs ruling_why")
-        if (ruling == "upheld" and kind in ("cost", "risk") and claim.get("severity") == "high"
+        if judged in ("rejected", "open") and not claim.get("ruling_why"):
+            errors.append(f"{cid}: a {judged} ruling needs ruling_why")
+        if claim.get("user_ruling") is not None:
+            if claim["user_ruling"] not in RULINGS - {None}:
+                errors.append(f"{cid}: user_ruling must be upheld, rejected or open")
+            if not claim.get("user_why"):
+                errors.append(f"{cid}: record the user's reason for overruling in user_why")
+        if (ruling(claim) == "upheld" and kind in ("cost", "risk") and claim.get("severity") == "high"
                 and isinstance(evidence, dict) and evidence.get("type") == "estimate"):
             warnings.append(f"{cid}: a high {kind} upheld on an estimate alone; measure it or plan a spike")
 
     check_proofs(ledger, ids, question_ids, errors, warnings)
-    check_hypothesis(ledger, ids, errors)
+    check_hypothesis(ledger, ids, question_ids, errors)
+    check_cuts(ledger, ids, root, errors, warnings)
+    check_sealed(ids, root, errors)
+    check_links(ledger, root, warnings)
+    budget = ledger.get("max_tokens")
+    if budget and debate_tokens(ledger) >= budget * SPEND_WARN:
+        warnings.append(f"the debate has spent {debate_tokens(ledger)} of its {budget} token budget")
     return errors, warnings
+
+
+def check_cuts(ledger, ids, root, errors, warnings):
+    cuts = [c for c in ids.values() if c.get("kind") == "cut"]
+    if not cuts:
+        return
+    roadmap = ledger.get("roadmap")
+    if not roadmap:
+        errors.append("`cut` claims need `roadmap` in the ledger, the roadmap they cut")
+        return
+    path = resolve(roadmap, root)
+    if path is None or not (path / "nodes").is_dir():
+        errors.append(f"roadmap {roadmap}: no nodes/ directory found")
+        return
+    nodes = roadmap_nodes(path)
+    for claim in cuts:
+        cid = claim["id"]
+        if claim.get("action") not in CUT_ACTIONS:
+            errors.append(f"{cid}: a cut needs action drop, park, merge or outline")
+        if not claim.get("nodes"):
+            errors.append(f"{cid}: a cut names the nodes it cuts in `nodes`")
+        for nid in claim.get("nodes", []):
+            status = nodes.get(nid)
+            if status is None:
+                errors.append(f"{cid}: node {nid} is not in {roadmap}")
+            elif status == "active":
+                warnings.append(f"{cid}: node {nid} is active; let it finish and cut what follows it")
+            elif status in ("done", "released"):
+                errors.append(f"{cid}: node {nid} is already {status}")
+
+
+def resolve(value, root):
+    """A path from the ledger: as given (from the repo root), or next to the debate folder."""
+    candidates = [Path(value)]
+    if root is not None:
+        candidates.append(root / value)
+    for c in candidates:
+        if c.exists():
+            return c
+    return None
+
+
+def check_sealed(ids, root, errors):
+    if root is None or not sealed_path(root).is_file():
+        return
+    sealed = json.loads(sealed_path(root).read_text())
+    for cid, frozen in sealed.get("claims", {}).items():
+        claim = ids.get(cid)
+        if claim is None:
+            errors.append(f"{cid}: sealed in round {frozen.get('round')} but no longer in the ledger")
+            continue
+        if strip_rulings(claim) != frozen:
+            errors.append(f"{cid}: changed after its round was sealed; a side answers with a new claim instead")
+
+
+def strip_rulings(claim):
+    out = {}
+    for k, v in claim.items():
+        if k not in RULING_FIELDS:
+            out[k] = v
+    return out
+
+
+def check_links(ledger, root, warnings):
+    earlier = ledger.get("supersedes")
+    if earlier and resolve(earlier, root) is None:
+        warnings.append(f"supersedes {earlier}: not found")
+
+
+def seal(ledger, root):
+    """Freeze every claim of the rounds that are finished."""
+    rnd = last_round(ledger)
+    claims = {}
+    for claim in ledger.get("claims", []):
+        if isinstance(claim.get("round"), int) and claim["round"] <= rnd:
+            claims[claim["id"]] = strip_rulings(claim)
+    sealed_path(root).write_text(json.dumps({"round": rnd, "claims": claims}, indent=2) + "\n")
+    return rnd
+
+
+def sealed_round(root):
+    if root is None or not sealed_path(root).is_file():
+        return 0
+    return json.loads(sealed_path(root).read_text()).get("round", 0)
 
 
 def check_proofs(ledger, ids, question_ids, errors, warnings):
@@ -239,7 +368,7 @@ def check_proofs(ledger, ids, question_ids, errors, warnings):
             errors.append(f"{pid}: say in `result` why it was abandoned (for example: cap reached)")
 
 
-def check_hypothesis(ledger, ids, errors):
+def check_hypothesis(ledger, ids, question_ids, errors):
     hyp = ledger.get("hypothesis")
     if not hyp:
         return
@@ -247,8 +376,8 @@ def check_hypothesis(ledger, ids, errors):
         if not hyp.get(field):
             errors.append(f"hypothesis: `{field}` is empty")
     for ref in hyp.get("claims", []):
-        if ref not in ids:
-            errors.append(f"hypothesis: unknown claim {ref}")
+        if ref not in ids and ref not in question_ids:
+            errors.append(f"hypothesis: unknown claim or question {ref}")
 
 
 def allowed_axes_text(ledger):
@@ -265,12 +394,12 @@ def converged(ledger):
             continue
         if claim.get("kind") == "concession":
             continue
-        if claim.get("ruling") in STANDING:
+        if ruling(claim) in STANDING:
             return False
     return True
 
 
-def status(ledger, errors):
+def status(ledger, errors, root=None):
     claims = ledger.get("claims", [])
     rnd = last_round(ledger)
     max_rounds = ledger.get("max_rounds", DEFAULT_MAX_ROUNDS)
@@ -292,7 +421,7 @@ def status(ledger, errors):
             pending_proofs.append(proof.get("id"))
     counts = {}
     for claim in claims:
-        key = "concession" if claim.get("kind") == "concession" else claim.get("ruling") or "unruled"
+        key = "concession" if claim.get("kind") == "concession" else ruling(claim) or "unruled"
         counts[key] = counts.get(key, 0) + 1
 
     if errors:
@@ -307,6 +436,8 @@ def status(ledger, errors):
         step, why = "proof", f"finish {', '.join(pending_proofs)} within its cap, then add the result as a fact"
     elif unanswered:
         step, why = "ask-user", f"answer {', '.join(unanswered)} before the next round"
+    elif ledger.get("max_tokens") and debate_tokens(ledger) >= ledger["max_tokens"]:
+        step, why = "settle", f"the debate's token budget of {ledger['max_tokens']} is spent"
     elif (converged(ledger) or rnd >= max_rounds) and ledger.get("research") and not ledger.get("hypothesis"):
         step, why = "judge", "write the hypothesis (metric, baseline, threshold, kill) before settling"
     elif converged(ledger):
@@ -315,6 +446,8 @@ def status(ledger, errors):
         step, why = "settle", f"round cap {max_rounds} reached; open claims become open risks"
     elif not has_side(ledger, rnd, "opponent"):
         step, why = "opponent", f"the opponent has not answered round {rnd}"
+    elif sealed_round(root) < rnd:
+        step, why = "seal", f"seal round {rnd} before the next one opens"
     else:
         step, why = "proponent", f"open round {rnd + 1}: revise the structure against the upheld costs"
 
@@ -331,6 +464,7 @@ def status(ledger, errors):
         "next": step,
         "why": why,
         "debate_tokens": debate_tokens(ledger),
+        "max_tokens": ledger.get("max_tokens"),
     }
 
 
@@ -378,7 +512,7 @@ def report(ledger):
     lines += ["## Settled structure", ""]
     structure = []
     for claim in claims:
-        if claim.get("kind") in ("proposal", "alternative") and claim.get("ruling") == "upheld":
+        if claim.get("kind") in ("proposal", "alternative") and ruling(claim) == "upheld":
             structure.append(f"- {claim['id']}: {claim['text']}{estimate_text(claim)}")
             for other in claims:
                 if other.get("kind") == "concession" and claim["id"] in other.get("answers", []):
@@ -397,7 +531,7 @@ def report(ledger):
     for axis in axes(ledger):
         rows = []
         for claim in claims:
-            if claim.get("axis") != axis or claim.get("ruling") != "upheld":
+            if claim.get("axis") != axis or ruling(claim) != "upheld":
                 continue
             if claim.get("kind") in ("concession",):
                 continue
@@ -410,11 +544,11 @@ def report(ledger):
     lines += ["## Rejected", ""]
     rejected = []
     for claim in claims:
-        if claim.get("ruling") != "rejected" or claim.get("kind") not in ("proposal", "alternative"):
+        if ruling(claim) != "rejected" or claim.get("kind") not in ("proposal", "alternative"):
             continue
         killers = []
         for other in claims:
-            if claim["id"] in other.get("answers", []) and other.get("ruling") == "upheld":
+            if claim["id"] in other.get("answers", []) and ruling(other) == "upheld":
                 killers.append(other["id"])
         reason = claim.get("ruling_why", "")
         by = f" (by {', '.join(killers)})" if killers else ""
@@ -422,10 +556,19 @@ def report(ledger):
     lines += rejected or ["- (none)"]
     lines.append("")
 
+    if ledger.get("roadmap"):
+        lines += [f"## Scope changes to {ledger['roadmap']}", ""]
+        cuts = []
+        for claim in claims:
+            if claim.get("kind") == "cut" and ruling(claim) == "upheld":
+                cuts.append(f"- {claim.get('action')} {', '.join(claim.get('nodes', []))}: {claim['text']} ({claim['id']})")
+        lines += cuts or ["- (none)"]
+        lines.append("")
+
     lines += ["## Open risks", ""]
     risks = []
     for claim in claims:
-        if claim.get("ruling") == "open":
+        if ruling(claim) == "open":
             risks.append(f"- {claim['id']} ({claim.get('axis') or claim.get('kind')}): {claim['text']}. "
                          f"Open because: {claim.get('ruling_why', '')}")
     lines += risks or ["- (none)"]
@@ -441,6 +584,15 @@ def report(ledger):
                          f"Result: {proof.get('result') or 'none yet'}")
         lines.append("")
 
+    lines += ["## Overruled", ""]
+    overruled = []
+    for claim in claims:
+        if claim.get("user_ruling"):
+            overruled.append(f"- {claim['id']}: judge {claim.get('ruling')}, user {claim['user_ruling']}. "
+                             f"Why: {claim.get('user_why', '')}")
+    lines += overruled or ["- (none)"]
+    lines.append("")
+
     lines += ["## Answers from the user", ""]
     answers = []
     for q in ledger.get("questions", []):
@@ -451,7 +603,10 @@ def report(ledger):
 
     tokens = debate_tokens(ledger)
     lines += ["## Debate cost", "", f"- {last_round(ledger)} rounds"
-              + (f", about {tokens} tokens" if tokens else "")]
+              + (f", about {tokens} tokens" if tokens else "")
+              + (f" of a {ledger['max_tokens']} budget" if ledger.get("max_tokens") else "")]
+    if ledger.get("supersedes"):
+        lines.append(f"- supersedes {ledger['supersedes']}")
     return "\n".join(lines) + "\n"
 
 
@@ -467,9 +622,13 @@ def print_check(errors, warnings):
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("root", type=Path)
-    ap.add_argument("command", nargs="?", default="status", choices=["init", "check", "status", "report"])
+    ap.add_argument("command", nargs="?", default="status", choices=["init", "check", "status", "seal", "report"])
     ap.add_argument("--goal", default="")
     ap.add_argument("--max-rounds", type=int, default=DEFAULT_MAX_ROUNDS)
+    ap.add_argument("--max-tokens", type=int, default=None,
+                    help="init: the debate's own token budget; status says settle once it is spent")
+    ap.add_argument("--roadmap", default=None, help="init: an existing roadmap the debate weighs and may cut")
+    ap.add_argument("--supersedes", default=None, help="init: the earlier debate this one replaces")
     ap.add_argument("--research", action="store_true",
                     help="init: the goal tests an idea; a hypothesis is required before settling")
     ap.add_argument("--json", action="store_true")
@@ -483,6 +642,7 @@ def main():
             sys.exit("init needs --goal")
         args.root.mkdir(parents=True, exist_ok=True)
         ledger = {"goal": args.goal, "research": args.research, "max_rounds": args.max_rounds,
+                  "max_tokens": args.max_tokens, "roadmap": args.roadmap, "supersedes": args.supersedes,
                   "extra_axes": [], "claims": [], "questions": [], "proofs": [], "hypothesis": None,
                   "spend": []}
         path.write_text(json.dumps(ledger, indent=2) + "\n")
@@ -490,7 +650,14 @@ def main():
         return
 
     ledger = load(args.root)
-    errors, warnings = check(ledger)
+    errors, warnings = check(ledger, args.root)
+
+    if args.command == "seal":
+        if errors:
+            print_check(errors, warnings)
+            sys.exit(1)
+        print(f"sealed rounds 1 to {seal(ledger, args.root)}")
+        return
 
     if args.command == "check":
         if args.json:
@@ -500,7 +667,7 @@ def main():
         sys.exit(1 if errors else 0)
 
     if args.command == "status":
-        result = status(ledger, errors)
+        result = status(ledger, errors, args.root)
         if args.json:
             result["errors"], result["warnings"] = errors, warnings
             print(json.dumps(result, indent=2))

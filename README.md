@@ -37,6 +37,8 @@ Linear roadmaps make every item wait for the one above it. Most of those waits a
 - handles ideas added mid-roadmap with an impact check
 - plans long roadmaps in layers: near work as full briefs, far work as outline nodes grouped into milestones, refined as it comes within reach
 - orders work by priority (`must`, `should`, `could`, `later`) and reports when the must work is done
+- tracks token spend per node against a `budget:` in `GOAL.md`, with a forecast at the current rate
+- runs `experiment` nodes against a hypothesis fixed by goal-debate, gated until the user sees the result
 
 `plan.py` needs only Python 3.
 
@@ -53,7 +55,8 @@ A plan breaks a goal into work, but never asks whether the goal in its current s
 - has the orchestrator judge each claim, measuring to settle disputes, and send only unmeasurable questions to the user
 - keeps every claim, ruling and question in `ledger.json`; `scripts/debate.py` validates it and says when the debate has settled or hit its round cap
 - counts prior art (papers, repos, the lab's past attempts) as evidence, and settles feasibility with small proofs capped at 30 minutes and 100k tokens
-- fixes the hypothesis, metric and success threshold of a research goal before any run; parallel-roadmap runs it as a gated `experiment` node
+- fixes the hypothesis, metric and success threshold of a research goal before any run. parallel-roadmap runs it as a gated `experiment` node
+- weighs an existing roadmap too, with `cut` claims that drop, park or merge nodes
 - ends with `debate.md`: the settled structure, a budget per axis, rejected alternatives and open risks, which parallel-roadmap turns into `GOAL.md`
 
 ```
@@ -64,6 +67,7 @@ python3 skills/goal-debate/scripts/debate.py docs/roadmaps/<slug>/debate status
 
 - `scripts/capacity.py` recommends how many worktrees the machine can take, from free memory, CPU load and disk.
 - `scripts/wt.py` keeps one worktree per branch in `.worktrees/`, hidden from `git status`, and prunes merged ones.
+- `wt.py prune-merged --agent-worktrees` also sweeps `.claude/worktrees/` left by agents, skipping locked and recently used ones.
 - `scripts/ci_guard.py` reads workflow triggers and repo visibility, and says "ask" when a push to a private repo would start CI.
 - Bugs found on the base branch are proven there and fixed in their own PR, so they ship without waiting for the feature.
 - A fresh agent reviews each branch with pr-review, for at most two rounds, before the PR goes to the maintainer.

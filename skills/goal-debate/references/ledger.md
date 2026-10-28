@@ -69,6 +69,8 @@
 | `why` | concession | The claim or evidence that changed the side's mind. |
 | `ruling` | judge sets it | `upheld`, `rejected`, `open`, or absent until ruled. |
 | `ruling_why` | rejected, open | The reason, in one sentence. |
+| `user_ruling`, `user_why` | when the user overrules | The user's ruling and reason. The judge's ruling stays for the record. |
+| `action`, `nodes` | cut | `drop`, `park`, `merge` or `outline`, and the roadmap node ids it applies to. |
 
 Kinds:
 
@@ -79,6 +81,7 @@ Kinds:
 - `rebuttal`: an answer to another claim, with its own evidence.
 - `concession`: drops or amends a claim of the side's own. Needs `why`.
 - `fact`: a measurement the judge adds. Only the judge writes facts.
+- `cut`: drops, parks, merges or outlines nodes of an existing roadmap. Needs `roadmap` at the top of the ledger.
 
 Evidence types, strongest first:
 
@@ -122,6 +125,16 @@ Required before a research debate (`"research": true`) can settle. All fields ar
 ```
 
 `claims` lists the claims and questions it rests on. Change the hypothesis only through a new debate.
+
+## Top-level fields
+
+- `max_tokens`: the debate's own token budget. `status` says `settle` once `spend` reaches it.
+- `roadmap`: path of an existing roadmap the debate weighs. Needed for `cut` claims.
+- `supersedes`: folder of the earlier debate this one reruns.
+
+## Sealing
+
+`debate.py seal` writes `sealed.json` with every claim of the finished rounds. After that, `check` fails when one of those claims changes or disappears. Only `ruling`, `ruling_why`, `user_ruling` and `user_why` may still change.
 
 ## Spend
 

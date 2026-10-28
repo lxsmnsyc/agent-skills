@@ -108,5 +108,26 @@ class PrAuthorTest(unittest.TestCase):
         self.assertGreaterEqual(out["recommended_parallel"], 1)
 
 
+    def test_agent_worktrees_are_swept_when_merged_and_idle(self):
+        agent = self.repo / ".claude" / "worktrees"
+        agent.mkdir(parents=True)
+        sh("git worktree add -q -b feat/old .claude/worktrees/agent-old"
+           " && git -C .claude/worktrees/agent-old commit -q --allow-empty -m old"
+           " && git merge -q --ff-only feat/old"
+           " && git worktree add -q -b feat/busy .claude/worktrees/agent-busy"
+           " && git -C .claude/worktrees/agent-busy commit -q --allow-empty -m busy"
+           " && git merge -q --ff-only feat/busy && git worktree lock .claude/worktrees/agent-busy"
+           " && git worktree add -q --detach .claude/worktrees/review-1 HEAD", self.repo)
+        env = dict(os.environ, PR_AUTHOR_FAKE_GH=str(self.repo / "nogh.json"))
+        (self.repo / "nogh.json").write_text("{}")
+        run = lambda *a: subprocess.run([sys.executable, str(SCRIPTS / "wt.py"), "prune-merged", *a],
+                                        cwd=self.repo, capture_output=True, text=True, env=env).stdout
+        self.assertIn("kept agent-old: used", run("--agent-worktrees"))
+        out = run("--agent-worktrees", "--min-age-hours", "0")
+        self.assertIn("removed feat/old", out)
+        self.assertIn("kept agent-busy: locked", out)
+        self.assertIn("removed review-1 (worktree): detached at a commit in main", out)
+        self.assertIn("agent-busy", sh("git worktree list", self.repo))
+
 if __name__ == "__main__":
     unittest.main()

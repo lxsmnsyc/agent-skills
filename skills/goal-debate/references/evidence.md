@@ -39,6 +39,13 @@ Peak RAM of one command: `/usr/bin/time -l <cmd>` on macOS (maximum resident set
 - Prices: use the claude-api skill for current model prices. Do not quote prices from memory.
 - The debate itself: record each round in `spend`. A debate that costs more than the savings it can find should be short.
 
+## An existing roadmap
+
+- `plan.py <root> overview` and `status`: open, outline and done nodes per milestone, the must line, tokens spent against `budget:`.
+- Pace: nodes done per week, from `git log --since=<4 weeks ago> -p -- <root>/nodes/*/brief.md | grep -c '^+status: done'`. Divide the open nodes by it for a rough finish date.
+- Growth: nodes added per week, from `added:` dates and `git log --diff-filter=A -- <root>/nodes/*/brief.md`. When nodes arrive faster than they close, the roadmap does not converge.
+- Calibration: `CALIBRATION.md` tokens and actual sizes per size class.
+
 ## Prior art
 
 Search before arguing. Give each search a few minutes, not an afternoon.

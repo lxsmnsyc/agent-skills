@@ -71,6 +71,17 @@ Write your claims into the ledger, run `python3 <skill>/scripts/debate.py <dir> 
 and reply with the ids you added and one line per id.
 ```
 
+## Opponent on an existing roadmap
+
+With `roadmap` in the ledger, add to the opponent's prompt:
+
+```
+This debate weighs an existing roadmap at <root>. Read `plan.py <root> overview` and the facts.
+Write `cut` claims: action drop, park, merge or outline, the node ids, and the cost each cut saves
+on each axis. Prefer cutting whole milestones or chains over single nodes. Never cut an active node;
+cut what follows it instead.
+```
+
 ## Judging
 
 The orchestrator rules on every claim. It does not argue, and it does not take the proponent's side because the proponent spoke first.

@@ -5,7 +5,7 @@ Usage:
   wt.py new <branch> [--base main] [--from <ref>]  # new branch in .worktrees/<branch>
   wt.py list                                       # worktrees with branch, base and state
   wt.py remove <branch> [--delete-branch]
-  wt.py prune-merged [--base main --base dev] [--remote] [--all-branches] [--dry-run]
+  wt.py prune-merged [--base main --base dev] [--remote] [--all-branches] [--agent-worktrees] [--dry-run]
                                                    # remove merged branches: worktree, local, remote
 
 Worktrees live in .worktrees/ at the repo root. The folder is added to
@@ -14,7 +14,13 @@ while it stays easy to open in an editor.
 
 prune-merged asks GitHub for the branch's merged pull request when `gh` works,
 which finds squash and rebase merges, and falls back to commit ancestry. A
-branch with commits newer than its merged PR is kept. Each worktree gets an index that tools can use to pick free ports (for example
+branch with commits newer than its merged PR is kept.
+
+--agent-worktrees also sweeps .claude/worktrees/, where agents started with
+worktree isolation leave their checkouts. It skips locked worktrees (an agent is
+still running there), worktrees used in the last --min-age-hours (default 6), and
+worktrees with uncommitted changes. A clean detached checkout whose commit is in a
+base, such as a review checkout, is removed too. Each worktree gets an index that tools can use to pick free ports (for example
 port = 3000 + 10 * index). `wt.py new` and `wt.py list` print it.
 """
 import argparse
@@ -22,7 +28,10 @@ import json
 import os
 import subprocess
 import sys
+import time
 from pathlib import Path
+
+AGENT_DIR = Path(".claude") / "worktrees"
 
 
 def git(*args, cwd=None, check=True):
@@ -153,9 +162,47 @@ def merged_into(branch, tip, bases, cwd):
     return None, None
 
 
+def sweep_detached(p, head, bases, repo, dry_run):
+    """Remove a clean detached checkout whose commit is already in a base."""
+    if git("status", "--porcelain", cwd=p, check=False):
+        print(f"kept {p.name}: detached, with uncommitted changes")
+        return
+    for base in bases:
+        if git("rev-parse", "--verify", "--quiet", base, cwd=repo, check=False) and \
+                subprocess.run(["git", "merge-base", "--is-ancestor", head, base], cwd=repo).returncode == 0:
+            if not dry_run:
+                git("worktree", "remove", str(p))
+            print(f"{'would remove' if dry_run else 'removed'} {p.name} (worktree): detached at a commit in {base}")
+            return
+    print(f"kept {p.name}: detached at a commit that is in no base")
+
+
 def remote_has(branch, cwd):
     out = git("ls-remote", "--heads", "origin", branch, cwd=cwd, check=False)
     return bool(out.strip())
+
+
+def last_used(path):
+    """Seconds since the last commit or checkout in this worktree. The index is left out,
+    because a plain `git status` (from an editor or a shell prompt) rewrites it."""
+    gitdir = Path(git("rev-parse", "--absolute-git-dir", cwd=path, check=False) or path)
+    newest = 0
+    for name in ("HEAD", "logs/HEAD"):
+        try:
+            newest = max(newest, (gitdir / name).stat().st_mtime)
+        except OSError:
+            pass
+    return time.time() - newest if newest else None
+
+
+def agent_skip(w, p, min_age_hours):
+    """Why an agent worktree must stay, or None when it may be swept."""
+    if "locked" in w:
+        return "locked, an agent may still be running in it"
+    age = last_used(p)
+    if age is not None and age < min_age_hours * 3600:
+        return f"used {age / 3600:.1f} h ago, under {min_age_hours} h"
+    return None
 
 
 def prune_merged(args):
@@ -167,6 +214,14 @@ def prune_merged(args):
         branch = w.get("branch", "").replace("refs/heads/", "")
         if p.parent == repo / ".worktrees" and branch and branch not in bases:
             candidates.append((branch, p))
+        if args.agent_worktrees and p.parent == repo / AGENT_DIR:
+            why = agent_skip(w, p, args.min_age_hours)
+            if why:
+                print(f"kept {p.name}: {why}")
+            elif branch and branch not in bases:
+                candidates.append((branch, p))
+            elif not branch:
+                sweep_detached(p, w.get("HEAD", ""), bases, repo, args.dry_run)
     if args.all_branches:
         listed = {b for b, _ in candidates}
         for b in git("branch", "--format=%(refname:short)").splitlines():
@@ -223,6 +278,10 @@ def main():
     p.add_argument("--remote", action="store_true", help="also delete the branch on origin")
     p.add_argument("--all-branches", action="store_true",
                    help="also local branches without a worktree")
+    p.add_argument("--agent-worktrees", action="store_true",
+                   help="also sweep .claude/worktrees/ left by agents with worktree isolation")
+    p.add_argument("--min-age-hours", type=float, default=6,
+                   help="with --agent-worktrees: keep worktrees used more recently than this")
     p.add_argument("--dry-run", action="store_true")
     args = ap.parse_args()
     {"new": new, "list": list_, "remove": remove, "prune-merged": prune_merged}[args.cmd](args)

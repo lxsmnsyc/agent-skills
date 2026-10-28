@@ -16,6 +16,7 @@ exclusive: []           # resources only one node may use at a time, e.g. [loadt
 fulfilled_by:           # set when the work already exists: commit, PR or node id
 gate: false             # true when a human must review the result before dependents start
 added:                  # date, only for nodes added after the plan was approved
+spent:                  # tokens the node took (worker, review, fixes), set by the orchestrator when it closes
 owns:
   - <path or glob this node edits>
 shared:

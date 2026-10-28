@@ -78,14 +78,17 @@ Run one curator pass at each checkpoint (after a wave, or after a few nodes in r
 8. Appends calibration entries.
 9. Archives finished nodes: `plan.py <root> archive` lists done nodes that no open node depends on. Once their learnings, decisions and calibration are recorded, `--apply` removes their folders and adds one line each to `archive.md` (title, pull request, milestone). `plan.py` still counts them as done, and their full text stays in git history. The first time in a roadmap, show the user the list before applying. The same command lists frozen contracts that no open node uses; remove them when the code is the better reference.
 10. Lists nodes whose priority looks wrong after this wave, and inbox items worth a node, for the user to decide.
-11. Writes `reviews/wave-<n>.md`: what landed, what changed in the plan, what it learned, and the current must line (the wave by which all must work is placed) and the progress of each milestone.
+11. Runs `plan.py <root> status` and reads the token line. When spend passes 80% of `budget:` or the forecast goes over, tell the user and offer a goal debate with `--roadmap` to cut scope.
+12. Writes `reviews/wave-<n>.md`: what landed, what changed in the plan, what it learned, and the current must line (the wave by which all must work is placed) and the progress of each milestone.
 
 ## Calibration
 
-Each outcome records estimated size against actual (turns or tokens if known, rework, contract changes, surprises). The curator appends one line per node to `CALIBRATION.md`:
+Each outcome records estimated size against actual (turns, rework, contract changes, surprises). The curator appends one line per node to `CALIBRATION.md`, with the node's `spent:` tokens:
 
 ```
-2026-10-26 perf-batch/frame-writer est M actual L: byte-equality test needed a fixture generator
+2026-10-26 perf-batch/frame-writer est M actual L, 410k tokens: byte-equality test needed a fixture generator
 ```
+
+Tokens per size class are what a goal debate uses to estimate the next roadmap's token cost.
 
 After a few roadmaps, look for patterns ("nodes touching server/zone run one size over") and add them to the sizing rubric as repo-specific notes at the top of `CALIBRATION.md`. The planner reads those notes in the decompose phase.

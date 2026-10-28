@@ -59,6 +59,21 @@ class PlanTest(unittest.TestCase):
         self.assertEqual(plan.review_mode(nodes["ok"], "auto"), "fresh")
         self.assertEqual(plan.branch_name(nodes["ok"]), "experiment/ok")
 
+    def test_token_spend_against_budget(self):
+        (self.root / "GOAL.md").write_text("---\nbudget:\n  tokens: 1000000\n---\n# G\n")
+        node(self.root, "a", size="M", owns="[src/a/**]", status="done", spent="400000")
+        node(self.root, "b", size="M", owns="[src/b/**]", status="done", spent="300_000")
+        node(self.root, "c", size="M", owns="[src/c/**]")
+        nodes, _, _ = self.load()
+        info = plan.spend(nodes, plan.token_budget(self.root))
+        self.assertEqual(info["spent"], 700000)
+        self.assertEqual(info["forecast"], 1050000)
+        self.assertTrue(any("over the 1000000 budget" in w for w in plan.spend_warnings(info)))
+        line = plan.archive_line(nodes["a"])
+        self.assertIn("400000 tokens", line)
+        m = plan.ARCHIVE_LINE.match(line)
+        self.assertEqual((m.group("spent"), m.group("ref")), ("400000", None))
+
     def test_frontmatter_subset(self):
         text = textwrap.dedent("""\
             ---

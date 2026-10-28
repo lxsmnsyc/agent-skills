@@ -17,6 +17,9 @@ branches:
   # fix: dev
   # hotfix: main
   # promote: dev -> next -> main
+budget:
+  # Optional, usually from a goal debate. plan.py warns at 80% of it and when the forecast goes over.
+  # tokens: 2000000
 release:
   # Only for repos that publish from one branch. Leave publish empty otherwise.
   # Each release is a type: release node with a milestone; later milestones wait for it.

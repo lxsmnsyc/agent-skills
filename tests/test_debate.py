@@ -89,6 +89,8 @@ class DebateTest(unittest.TestCase):
 
     def test_new_standing_claim_opens_next_round(self):
         self.write(claims=[proposal("P1", 1), cost("O1", 1, ["P1"])])
+        self.assertEqual(self.status()["next"], "seal")
+        self.run_debate("seal")
         self.assertEqual(self.status()["next"], "proponent")
 
     def test_check_errors(self):
@@ -174,6 +176,63 @@ class DebateTest(unittest.TestCase):
         self.write(hypothesis={"statement": "s", "metric": "m", "baseline": "b", "threshold": "t", "kill": "k"})
         self.assertEqual(self.status()["next"], "settle")
         self.assertIn("## Hypothesis", self.run_debate("report").stdout)
+
+    def test_sealed_claims_cannot_change(self):
+        self.write(claims=[proposal("P1", 1), cost("O1", 1, ["P1"])])
+        self.run_debate("seal")
+        changed = cost("O1", 1, ["P1"], severity="low", ruling="rejected")
+        self.write(claims=[proposal("P1", 1, ruling="open"), changed])
+        result = self.run_debate("check", check=False)
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("O1: changed after its round was sealed", result.stdout)
+        self.assertNotIn("P1: changed", result.stdout)
+
+    def test_user_overrule_counts_and_is_reported(self):
+        alt = {"id": "P2", "round": 1, "by": "proponent", "kind": "alternative", "text": "cloud API",
+               "evidence": {"type": "source", "source": "price list"}, "ruling": "rejected",
+               "ruling_why": "privacy", "user_ruling": "upheld", "user_why": "thumbnails only are fine"}
+        self.write(claims=[proposal("P1", 1), alt])
+        out = self.run_debate("report").stdout
+        self.assertIn("- P2: cloud API", out.split("## Hypothesis")[0].split("## Budget")[0])
+        self.assertIn("P2: judge rejected, user upheld. Why: thumbnails only are fine", out)
+        alt.pop("user_why")
+        self.write(claims=[proposal("P1", 1), alt])
+        self.assertIn("user_why", self.run_debate("check", check=False).stdout)
+
+    def test_token_budget_settles(self):
+        self.write(max_tokens=1000, spend=[{"round": 1, "tokens": 1200}],
+                   claims=[proposal("P1", 1), cost("O1", 1, ["P1"])])
+        out = self.status()
+        self.assertEqual(out["next"], "settle")
+        self.assertIn("token budget", out["why"])
+
+    def test_hypothesis_may_cite_questions(self):
+        self.write(claims=[proposal("P1", 1)],
+                   questions=[{"id": "Q1", "by": "opponent", "ask": "Deadline?", "answer": "2 weeks"}],
+                   hypothesis={"statement": "s", "metric": "m", "baseline": "b", "threshold": "t",
+                               "kill": "k", "claims": ["P1", "Q1"]})
+        self.assertEqual(self.run_debate("check").returncode, 0)
+
+    def test_cuts_check_the_roadmap(self):
+        roadmap = Path(self.tmp.name) / "roadmap"
+        for nid, status in (("a", "todo"), ("b", "active"), ("c", "done")):
+            (roadmap / "nodes" / nid).mkdir(parents=True)
+            (roadmap / "nodes" / nid / "brief.md").write_text(f"---\nid: {nid}\nstatus: {status}\n---\n")
+
+        def cut(cid, nodes, action="park"):
+            return {"id": cid, "round": 1, "by": "opponent", "kind": "cut", "action": action, "nodes": nodes,
+                    "text": "no player sees it before 1.0", "evidence": {"type": "source", "source": "plan.py overview"},
+                    "ruling": "upheld"}
+        self.write(roadmap=str(roadmap), claims=[cut("O1", ["a"]), cut("O2", ["b"]), cut("O3", ["c", "zz"], "fly")])
+        out = json.loads(self.run_debate("check", "--json", check=False).stdout)
+        errors, warnings = "\n".join(out["errors"]), "\n".join(out["warnings"])
+        self.assertIn("O3: node c is already done", errors)
+        self.assertIn("O3: node zz is not in", errors)
+        self.assertIn("O3: a cut needs action", errors)
+        self.assertIn("O2: node b is active", warnings)
+        self.assertNotIn("O1", errors)
+        self.write(claims=[cut("O1", ["a"])])
+        self.assertIn("- park a: no player sees it before 1.0 (O1)", self.run_debate("report").stdout)
 
 if __name__ == "__main__":
     unittest.main()

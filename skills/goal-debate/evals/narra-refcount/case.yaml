@@ -1,0 +1,10 @@
+schema_version: "1.1"
+name: narra-refcount
+expected_outcome: |
+  A research debate (debate.py init --research) on narra's decision D1, reference counting as the
+  memory model. Prior art such as Perceus in Koka and Lean 4, Swift ARC and Hylo is recorded as
+  prior-art facts. The cost on numeric and string-heavy code is settled with a capped proof or a
+  measurement that uses the repo's existing bench/ harness, not argued from estimates. The debate
+  settles with a hypothesis whose metric, baseline, threshold and kill criteria are fixed, and a
+  timing threshold that only counts beyond the noise. The run proposes a DECISIONS.md entry in the
+  file's own format and asks the user to approve debate.md. No compiler code changes.

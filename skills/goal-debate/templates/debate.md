@@ -4,6 +4,8 @@ date: <YYYY-MM-DD>
 rounds: <n of max>
 status: proposed        # approved once the user signs off
 roadmap: <path to the roadmap, or none>
+supersedes: <earlier debate.md, or none>
+decision: <link to the decision record entry, or none>
 ---
 
 # Debate: <goal>
@@ -32,6 +34,12 @@ Research debates only. Fixed before any run. Change it only through a new debate
 ## Rejected
 
 - <alternative or proposal>: <why, in one line> (<claim id that beat it>)
+
+## Scope changes
+
+Roadmap debates only.
+
+- <drop | park | merge | outline> <node ids>: <why> (<claim id>)
 
 ## Proofs
 

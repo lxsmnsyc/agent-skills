@@ -1,0 +1,10 @@
+schema_version: "1.1"
+name: poketerra-scope
+expected_outcome: |
+  A debate on the existing overwander roadmap (debate.py init --roadmap docs/roadmaps/overwander).
+  Frame records the roadmap's numbers as facts: 67 nodes with 1 active and none done, the must line,
+  the pace of done nodes, and the one-node-at-a-time device constraint from GOAL.md. The opponent
+  writes cut claims that name node ids with an action (drop, park, merge, outline), preferring whole
+  milestones or chains, and never cuts the active zenith-johto-galar node. The proponent defends
+  nodes by their value to the outcome. The result lists the upheld scope changes and asks the user to
+  approve before any brief changes.
