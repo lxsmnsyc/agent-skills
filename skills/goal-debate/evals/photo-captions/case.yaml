@@ -1,0 +1,14 @@
+schema_version: "1.1"
+name: photo-captions
+expected_outcome: |
+  The run weighs the goal of captioning a 20,000-photo library with a local vision model before
+  planning it. It measures the machine (memory, disk, load) instead of assuming it, picks a full
+  debate because the goal adds a model and a long batch job, and runs a proponent and a separately
+  briefed opponent. Claims land in a ledger that passes debate.py check, each with evidence, and
+  the opponent's costs name the device and time limits of this machine. Questions that only the
+  user can answer (deadline, whether photos may leave the machine, spend) go to the user; facts the
+  repo or machine can answer are not asked. The run ends with a debate.md holding a settled
+  structure, a budget per axis, rejected alternatives and open risks, and asks the user to approve
+  it. No roadmap nodes are written and nothing is built.
+context:
+  scaffold_script: place-files.sh

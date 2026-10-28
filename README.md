@@ -5,6 +5,7 @@ Skills for Claude Code and other agents that support the Agent Skills format.
 ## Skills
 
 - [`parallel-roadmap`](skills/parallel-roadmap/SKILL.md): plan and run a roadmap as a dependency graph, so several agents can work at the same time without blocking each other.
+- [`goal-debate`](skills/goal-debate/SKILL.md): weigh a goal against its cost before planning it. A proponent agent and an opponent agent argue over device, time and token cost, the orchestrator judges each claim with evidence, and the user answers what cannot be measured.
 - [`pr-author`](skills/pr-author/SKILL.md): write changes as small pull requests that merge on their own. Works in worktrees when the machine has room, splits bugs found on the base into their own fix PRs, self-reviews with pr-review, and asks before a push would start billed CI.
 - [`pr-review`](skills/pr-review/SKILL.md): review a pull request or branch with evidence. Fixes are reproduced on the base and proven on the head, features are checked against the roadmap, checks run locally, and approval goes to the maintainer.
 - [`perf-pass`](skills/perf-pass/SKILL.md): profile a finished feature, try several optimizations side by side, and keep the one with the best measured gain for its cost. Runtime for libraries and servers, bundle size for web apps.
@@ -41,6 +42,20 @@ Linear roadmaps make every item wait for the one above it. Most of those waits a
 
 ```
 python3 skills/parallel-roadmap/scripts/plan.py docs/roadmaps/<slug> status
+```
+
+## goal-debate
+
+A plan breaks a goal into work, but never asks whether the goal in its current shape is worth what it costs. This skill:
+
+- runs a proponent, who proposes and expands the idea, and an opponent with fresh context, who looks for costs and weak points
+- weighs every claim on device capability (storage, RAM, compute), time to deliver and token spend, plus up to two axes the plan needs
+- has the orchestrator judge each claim, measuring to settle disputes, and send only unmeasurable questions to the user
+- keeps every claim, ruling and question in `ledger.json`; `scripts/debate.py` validates it and says when the debate has settled or hit its round cap
+- ends with `debate.md`: the settled structure, a budget per axis, rejected alternatives and open risks, which parallel-roadmap turns into `GOAL.md`
+
+```
+python3 skills/goal-debate/scripts/debate.py docs/roadmaps/<slug>/debate status
 ```
 
 ## pr-author

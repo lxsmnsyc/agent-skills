@@ -13,6 +13,7 @@ Ask yourself what the user needs right now, then go to that phase. Do not run al
 
 | The user wants to | Start at |
 | --- | --- |
+| weigh whether a goal is worth its cost before planning it | the goal-debate skill, then 1. Discover |
 | plan something new | 1. Discover |
 | turn an existing plan, proposal, ADR batch or backlog into a roadmap | 0. Survey, then 2. Decompose |
 | review or harden a plan | 3. Stress-test |
@@ -97,6 +98,8 @@ Check each imported item against the code before writing its node. Planning docu
 ## 1. Discover
 
 Work out the goal with the user in a short feedback loop. Write `GOAL.md` from the template: outcome, priorities, constraints, non-goals, verification commands, numbered resources, open questions. Keep it under about 1,500 tokens because every agent loads it.
+
+If a goal debate ran first (`<root>/debate/debate.md`, approved), build `GOAL.md` from it: the settled structure is the outcome, each axis budget becomes a constraint, rejected alternatives become non-goals, and open risks become first-wave spikes. For a large or costly goal with no debate, offer one before decomposing.
 
 Agree on what "must" means for this roadmap, usually a release or a user-visible milestone. Without that line, everything becomes a must and priorities stop meaning anything.
 

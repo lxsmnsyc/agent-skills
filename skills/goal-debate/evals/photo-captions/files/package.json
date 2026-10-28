@@ -1,0 +1,8 @@
+{
+  "name": "gallery",
+  "private": true,
+  "type": "module",
+  "scripts": { "dev": "vite", "build": "vite build", "test": "vitest run" },
+  "dependencies": { "better-sqlite3": "^11.3.0", "express": "^4.21.0", "sharp": "^0.33.5" },
+  "devDependencies": { "vite": "^5.4.0", "vitest": "^2.1.0" }
+}
