@@ -3,13 +3,14 @@ id: <id, same as the folder name>
 title: <short title>
 status: todo            # todo | active | done | released | dropped (only the orchestrator changes this)
 priority: should        # must (needed now) | should (important, can ship without) | could (when capacity is free) | later (parked)
-type: feature           # feature | fix | hotfix | refactor | docs | chore | release | spike | contract
+type: feature           # feature | fix | hotfix | refactor | docs | chore | release | spike | contract | experiment
 outline: false          # true for far-off work that is not broken into a brief yet: goal, priority, rough deps and size only
 milestone:              # optional group from the milestones list in GOAL.md, e.g. a quarter or a release. Required on release nodes that publish from one branch
 target:                 # branch the pull request targets; empty means the branch policy for this type
 from:                   # release nodes only: the branch being promoted (target is where it goes)
 size: M                 # S | M | L | XL (XL must be split)
 spike: false            # true for nodes that answer a question instead of shipping code
+hypothesis:             # experiment nodes: the debate.md (or its Hypothesis section) that fixes the metric and threshold
 verify:                 # optional command run from the repo root; exit 0 means the acceptance holds. Test behavior (run the tests, call the code), not file existence
 exclusive: []           # resources only one node may use at a time, e.g. [loadtest, db-container]
 fulfilled_by:           # set when the work already exists: commit, PR or node id

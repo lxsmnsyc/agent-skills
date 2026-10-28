@@ -35,7 +35,7 @@ DEFAULT_MODEL = {"S": "sonnet", "M": "sonnet", "L": "opus", "XL": "opus"}
 KINDS = {"contract", "behavior", "hard"}
 STATUSES = {"todo", "active", "done", "released", "dropped"}
 DONE = {"done", "released"}
-TYPES = {"feature", "fix", "hotfix", "refactor", "docs", "chore", "release", "spike", "contract"}
+TYPES = {"feature", "fix", "hotfix", "refactor", "docs", "chore", "release", "spike", "contract", "experiment"}
 # must: needed for the goal now. should: important, but the goal can ship without it.
 # could: worth doing when capacity is free. later: parked, not scheduled.
 PRIORITIES = {"must": 0, "should": 1, "could": 2, "later": 3}
@@ -160,7 +160,7 @@ def archived_node(root, nid, entry):
         "id": nid, "dir": root / "nodes" / nid, "dirname": nid, "title": entry["title"],
         "status": entry["status"], "priority": "should", "size": "S", "model": None,
         "spike": False, "gate": False, "deps": [], "owns": [], "shared": [], "provides": [],
-        "reserves": [], "added": None, "exclusive": [], "verify": None,
+        "reserves": [], "added": None, "exclusive": [], "verify": None, "hypothesis": None,
         "fulfilled_by": entry.get("ref"), "type": None, "target": None, "from": None,
         "outline": False, "milestone": entry.get("milestone"), "archived": True,
     }
@@ -185,7 +185,9 @@ def load(root):
             "size": fm.get("size"),
             "model": fm.get("model"),
             "spike": bool(fm.get("spike")),
-            "gate": bool(fm.get("gate")),
+            # An experiment's result goes to the user before anything builds on it.
+            "gate": bool(fm.get("gate")) or fm.get("type") == "experiment",
+            "hypothesis": fm.get("hypothesis") or None,
             "deps": [d for d in _as_list(fm.get("depends_on"))],
             "owns": [str(p) for p in _as_list(fm.get("owns"))],
             "shared": [str(p) for p in _as_list(fm.get("shared"))],
@@ -542,6 +544,10 @@ def check(nodes, contracts, load_errors, policy=None, milestones=None, release=N
             if n.get("target_eff") and n["target_eff"] not in known:
                 warnings.append(f"node {nid}: targets '{n['target_eff']}', which is not a branch "
                                 f"in the policy ({', '.join(sorted(known))})")
+    for nid, n in live(nodes).items():
+        if n["type"] == "experiment" and not n["outline"] and n["status"] not in DONE and not n["hypothesis"]:
+            warnings.append(f"node {nid}: an experiment needs `hypothesis:`, the debate.md (or section) "
+                            f"that fixes its metric and success threshold before the run")
     ships = ships_in(nodes, milestones)
     for nid, n in live(nodes).items():
         if n["type"] != "release":
@@ -964,7 +970,7 @@ def review_mode(n, setting="auto"):
     """
     if setting in ("fresh", "self"):
         return setting
-    if n["gate"] or n["provides"] or n["type"] in ("release", "hotfix"):
+    if n["gate"] or n["provides"] or n["type"] in ("release", "hotfix", "experiment"):
         return "fresh"
     if n["size"] == "S" or n["type"] in ("docs", "chore"):
         return "self"
@@ -1067,10 +1073,10 @@ def apply_archive(root, nodes, ids):
 
 BRANCH_PREFIX = {"feature": "feat", "fix": "fix", "hotfix": "hotfix", "refactor": "refactor",
                  "docs": "docs", "chore": "chore", "release": "release", "spike": "spike",
-                 "contract": "feat"}
+                 "contract": "feat", "experiment": "experiment"}
 TITLE_PREFIX = {"feature": "feat", "fix": "fix", "hotfix": "fix", "refactor": "refactor",
                 "docs": "docs", "chore": "chore", "release": "chore", "spike": "chore",
-                "contract": "feat"}
+                "contract": "feat", "experiment": "chore"}
 
 
 def branch_name(n):
@@ -1124,7 +1130,7 @@ def context_files(root, nid, nodes, contracts):
 def model_for(n):
     if n["model"]:
         return n["model"]
-    if n["spike"]:
+    if n["spike"] or n["type"] == "experiment":
         return "opus"
     return DEFAULT_MODEL.get(n["size"], "sonnet")
 

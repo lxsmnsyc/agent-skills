@@ -52,6 +52,8 @@ A plan breaks a goal into work, but never asks whether the goal in its current s
 - weighs every claim on device capability (storage, RAM, compute), time to deliver and token spend, plus up to two axes the plan needs
 - has the orchestrator judge each claim, measuring to settle disputes, and send only unmeasurable questions to the user
 - keeps every claim, ruling and question in `ledger.json`; `scripts/debate.py` validates it and says when the debate has settled or hit its round cap
+- counts prior art (papers, repos, the lab's past attempts) as evidence, and settles feasibility with small proofs capped at 30 minutes and 100k tokens
+- fixes the hypothesis, metric and success threshold of a research goal before any run; parallel-roadmap runs it as a gated `experiment` node
 - ends with `debate.md`: the settled structure, a budget per axis, rejected alternatives and open risks, which parallel-roadmap turns into `GOAL.md`
 
 ```

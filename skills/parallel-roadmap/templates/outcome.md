@@ -4,6 +4,15 @@
 
 - <What exists now, with paths and public names. Or "Already fulfilled by <commit, PR or node>", with the evidence below.>
 
+## Result
+
+Experiment nodes only.
+
+- result: <met | missed | killed | inconclusive>, against the threshold in `hypothesis:`
+- numbers: <metric per run or seed, mean and spread>
+- reproduce: <commit, command, seeds, data version or hash, environment>
+- Record a missed or null result in full. It is as useful as a met one.
+
 ## Deviations
 
 - <Differences from the brief or contract, and why. "None" if none.>

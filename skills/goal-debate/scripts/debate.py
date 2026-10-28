@@ -4,7 +4,7 @@
 The ledger is <dir>/ledger.json. Stdlib only.
 
 Usage:
-  debate.py <dir> init --goal "..." [--max-rounds 3]   # write an empty ledger
+  debate.py <dir> init --goal "..." [--max-rounds 3] [--research]   # write an empty ledger
   debate.py <dir> check                               # validation only, exit 1 on errors
   debate.py <dir> status                              # rulings, open questions, next step (default)
   debate.py <dir> report                              # Markdown summary for debate.md
@@ -27,11 +27,19 @@ NEEDS_AXIS = {"cost", "risk", "fact"}
 NEEDS_ANSWERS = {"rebuttal", "concession"}
 SEVERITIES = {"low", "medium", "high"}
 # measured: command output on this machine or repo. calibration: past estimate against actual.
-# source: a file, doc or price list. user: an answered question. estimate: a reasoned guess.
-EVIDENCE = {"measured", "calibration", "source", "user", "estimate"}
+# source: a file, doc or price list. prior-art: a paper, a public repo, or the lab's own past
+# debate or experiment. user: an answered question. estimate: a reasoned guess.
+EVIDENCE = {"measured", "calibration", "source", "prior-art", "user", "estimate"}
+NEEDS_SOURCE = {"measured", "calibration", "source", "prior-art"}
 RULINGS = {None, "upheld", "rejected", "open"}
 STANDING = {"upheld", "open"}
 AXIS_STATUSES = {"proposed", "accepted", "rejected"}
+# A proof is a small throwaway build in a scratch directory that settles one claim.
+PROOF_STATUSES = {"planned", "running", "done", "abandoned"}
+PROOF_PENDING = {"planned", "running"}
+MAX_PROOFS = 2
+PROOF_CAP = {"minutes": 30, "tokens": 100000}
+HYPOTHESIS_FIELDS = ("statement", "metric", "baseline", "threshold", "kill")
 
 
 def ledger_path(root):
@@ -172,7 +180,7 @@ def check(ledger):
                     errors.append(f"{cid}: evidence from the user must name an answered question")
                 elif not question_ids[qid].get("answer"):
                     errors.append(f"{cid}: question {qid} is not answered yet")
-            elif evidence["type"] in ("measured", "calibration", "source") and not evidence.get("source"):
+            elif evidence["type"] in NEEDS_SOURCE and not evidence.get("source"):
                 errors.append(f"{cid}: {evidence['type']} evidence needs a source (the command or the file)")
         if kind == "concession" and not claim.get("why"):
             errors.append(f"{cid}: a concession says which claim or evidence changed the side's mind")
@@ -186,7 +194,61 @@ def check(ledger):
                 and isinstance(evidence, dict) and evidence.get("type") == "estimate"):
             warnings.append(f"{cid}: a high {kind} upheld on an estimate alone; measure it or plan a spike")
 
+    check_proofs(ledger, ids, question_ids, errors, warnings)
+    check_hypothesis(ledger, ids, errors)
     return errors, warnings
+
+
+def check_proofs(ledger, ids, question_ids, errors, warnings):
+    proofs = ledger.get("proofs", [])
+    if len(proofs) > MAX_PROOFS:
+        warnings.append(f"{len(proofs)} proofs; more than {MAX_PROOFS} turns the debate into the project")
+    seen = set()
+    for proof in proofs:
+        pid = proof.get("id")
+        if not pid:
+            errors.append("proof without an id")
+            continue
+        if pid in seen or pid in ids or pid in question_ids:
+            errors.append(f"{pid}: id used twice")
+        seen.add(pid)
+        if proof.get("claim") not in ids:
+            errors.append(f"{pid}: a proof settles one claim; `claim` must name it")
+        if not proof.get("question"):
+            errors.append(f"{pid}: `question` is empty")
+        if not proof.get("dir"):
+            errors.append(f"{pid}: give the scratch directory it runs in, outside the repo")
+        if proof.get("status") not in PROOF_STATUSES:
+            errors.append(f"{pid}: status must be one of {sorted(PROOF_STATUSES)}")
+        cap = proof.get("cap")
+        if not isinstance(cap, dict) or not cap.get("minutes") or not cap.get("tokens"):
+            errors.append(f"{pid}: set cap.minutes and cap.tokens before it starts")
+        else:
+            for key, limit in PROOF_CAP.items():
+                if cap[key] > limit:
+                    warnings.append(f"{pid}: cap of {cap[key]} {key} is over the default {limit}; "
+                                    f"the user should agree to it")
+        if proof.get("status") == "done":
+            fid = proof.get("fact")
+            fact = ids.get(fid)
+            if not proof.get("result"):
+                errors.append(f"{pid}: a done proof needs `result`")
+            if fact is None or fact.get("kind") != "fact":
+                errors.append(f"{pid}: a done proof records its result as a judge fact; `fact` must name it")
+        if proof.get("status") == "abandoned" and not proof.get("result"):
+            errors.append(f"{pid}: say in `result` why it was abandoned (for example: cap reached)")
+
+
+def check_hypothesis(ledger, ids, errors):
+    hyp = ledger.get("hypothesis")
+    if not hyp:
+        return
+    for field in HYPOTHESIS_FIELDS:
+        if not hyp.get(field):
+            errors.append(f"hypothesis: `{field}` is empty")
+    for ref in hyp.get("claims", []):
+        if ref not in ids:
+            errors.append(f"hypothesis: unknown claim {ref}")
 
 
 def allowed_axes_text(ledger):
@@ -224,6 +286,10 @@ def status(ledger, errors):
     for q in ledger.get("questions", []):
         if not q.get("answer"):
             unanswered.append(q.get("id"))
+    pending_proofs = []
+    for proof in ledger.get("proofs", []):
+        if proof.get("status") in PROOF_PENDING:
+            pending_proofs.append(proof.get("id"))
     counts = {}
     for claim in claims:
         key = "concession" if claim.get("kind") == "concession" else claim.get("ruling") or "unruled"
@@ -237,8 +303,12 @@ def status(ledger, errors):
         step, why = "judge", f"rule on the proposed axes: {', '.join(proposed_axes)}"
     elif unruled:
         step, why = "judge", f"rule on {', '.join(unruled)}"
+    elif pending_proofs:
+        step, why = "proof", f"finish {', '.join(pending_proofs)} within its cap, then add the result as a fact"
     elif unanswered:
         step, why = "ask-user", f"answer {', '.join(unanswered)} before the next round"
+    elif (converged(ledger) or rnd >= max_rounds) and ledger.get("research") and not ledger.get("hypothesis"):
+        step, why = "judge", "write the hypothesis (metric, baseline, threshold, kill) before settling"
     elif converged(ledger):
         step, why = "settle", f"round {rnd} added nothing that stands"
     elif rnd >= max_rounds:
@@ -256,6 +326,7 @@ def status(ledger, errors):
         "rulings": counts,
         "unruled": unruled,
         "unanswered_questions": unanswered,
+        "pending_proofs": pending_proofs,
         "converged": converged(ledger),
         "next": step,
         "why": why,
@@ -315,6 +386,13 @@ def report(ledger):
     lines += structure or ["- (nothing upheld)"]
     lines.append("")
 
+    hyp = ledger.get("hypothesis")
+    if hyp:
+        lines += ["## Hypothesis", ""]
+        for field in HYPOTHESIS_FIELDS:
+            lines.append(f"- {field}: {hyp.get(field)}")
+        lines.append("")
+
     lines += ["## Budget by axis", ""]
     for axis in axes(ledger):
         rows = []
@@ -353,6 +431,16 @@ def report(ledger):
     lines += risks or ["- (none)"]
     lines.append("")
 
+    proofs = ledger.get("proofs", [])
+    if proofs:
+        lines += ["## Proofs", ""]
+        for proof in proofs:
+            cap = proof.get("cap") or {}
+            lines.append(f"- {proof.get('id')} for {proof.get('claim')}: {proof.get('question')} "
+                         f"({proof.get('status')}, cap {cap.get('minutes')} min, {cap.get('tokens')} tokens). "
+                         f"Result: {proof.get('result') or 'none yet'}")
+        lines.append("")
+
     lines += ["## Answers from the user", ""]
     answers = []
     for q in ledger.get("questions", []):
@@ -382,6 +470,8 @@ def main():
     ap.add_argument("command", nargs="?", default="status", choices=["init", "check", "status", "report"])
     ap.add_argument("--goal", default="")
     ap.add_argument("--max-rounds", type=int, default=DEFAULT_MAX_ROUNDS)
+    ap.add_argument("--research", action="store_true",
+                    help="init: the goal tests an idea; a hypothesis is required before settling")
     ap.add_argument("--json", action="store_true")
     args = ap.parse_args()
 
@@ -392,8 +482,9 @@ def main():
         if not args.goal:
             sys.exit("init needs --goal")
         args.root.mkdir(parents=True, exist_ok=True)
-        ledger = {"goal": args.goal, "max_rounds": args.max_rounds, "extra_axes": [],
-                  "claims": [], "questions": [], "spend": []}
+        ledger = {"goal": args.goal, "research": args.research, "max_rounds": args.max_rounds,
+                  "extra_axes": [], "claims": [], "questions": [], "proofs": [], "hypothesis": None,
+                  "spend": []}
         path.write_text(json.dumps(ledger, indent=2) + "\n")
         print(f"wrote {path}")
         return

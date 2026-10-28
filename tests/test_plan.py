@@ -47,6 +47,18 @@ class PlanTest(unittest.TestCase):
         nodes, contracts, errs = plan.load(self.root)
         return nodes, contracts, plan.check(nodes, contracts, errs)
 
+    def test_experiment_is_gated_and_needs_hypothesis(self):
+        node(self.root, "exp", size="M", owns="[experiments/exp/**]", type="experiment")
+        node(self.root, "ok", size="M", owns="[experiments/ok/**]", type="experiment",
+             hypothesis="debate/debate.md#hypothesis")
+        nodes, _, (errors, warnings) = self.load()
+        self.assertEqual(errors, [])
+        self.assertTrue(nodes["exp"]["gate"])
+        self.assertTrue(any("exp: an experiment needs `hypothesis:`" in w for w in warnings))
+        self.assertFalse(any("ok: an experiment" in w for w in warnings))
+        self.assertEqual(plan.review_mode(nodes["ok"], "auto"), "fresh")
+        self.assertEqual(plan.branch_name(nodes["ok"]), "experiment/ok")
+
     def test_frontmatter_subset(self):
         text = textwrap.dedent("""\
             ---

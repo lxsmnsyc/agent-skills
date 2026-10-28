@@ -73,7 +73,7 @@ Run one curator pass at each checkpoint (after a wave, or after a few nodes in r
 3. Moves decisions into the repo's decision records.
 4. Resolves contract change requests (see `orchestration.md`).
 5. Runs `plan.py <root> refine` and breaks the outline nodes it lists into full briefs, using what this wave's outcomes taught. An outline can become several nodes, or turn out to be unnecessary.
-6. Updates downstream briefs whose upstream outcome deviated from the plan, before those nodes start.
+6. Updates downstream briefs whose upstream outcome deviated from the plan, before those nodes start. An experiment whose result is `missed`, `killed` or `inconclusive` stops its dependents: show the user the result and offer a new goal debate with it as a fact, instead of building on a hypothesis that did not hold.
 7. Deletes or corrects memory that the new outcomes proved wrong. Check that each rule still matches the code it describes.
 8. Appends calibration entries.
 9. Archives finished nodes: `plan.py <root> archive` lists done nodes that no open node depends on. Once their learnings, decisions and calibration are recorded, `--apply` removes their folders and adds one line each to `archive.md` (title, pull request, milestone). `plan.py` still counts them as done, and their full text stays in git history. The first time in a roadmap, show the user the list before applying. The same command lists frozen contracts that no open node uses; remove them when the code is the better reference.

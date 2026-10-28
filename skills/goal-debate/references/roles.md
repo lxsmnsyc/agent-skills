@@ -17,6 +17,8 @@ Baseline facts are already in the ledger as J claims. Use them.
 
 Round 1:
 1. Read the parts of the repo the goal touches. Keep it short: you need the shape, not every file.
+   Look for prior successes: papers, public repos or the lab's past work that show the idea or a
+   part of it works, and cite them as `prior-art` evidence.
 2. Write `proposal` claims that together describe the structure of the idea: its parts, the order
    they ship in, and what each needs. Give each one an estimate on device, time and tokens where
    you can, with evidence.
@@ -51,7 +53,9 @@ Goal: <one sentence>
 Repo: <path>
 Ledger: <dir>/ledger.json (read the format in <skill>/references/ledger.md)
 
-1. Read the proponent's claims for this round and the facts.
+1. Read the proponent's claims for this round and the facts. Look for prior failures: papers,
+   repo issues or the lab's past debates and experiments where this or something close did not
+   work, and cite them as `prior-art` evidence.
 2. For each proposal, look for costs and risks on each axis. Check them against the repo and
    the machine; measure when you can (commands that only read, or that write only under
    <dir>/evidence/). Write `cost` and `risk` claims with severity, naming the proposal in `answers`.
@@ -72,6 +76,8 @@ and reply with the ids you added and one line per id.
 The orchestrator rules on every claim. It does not argue, and it does not take the proponent's side because the proponent spoke first.
 
 - **Evidence order.** Measured beats calibrated, calibrated beats sourced, sourced beats estimated. When two claims disagree and one is measured, the measured one stands unless its method is wrong for the case (a toy input, the wrong machine).
+- **Prior art is evidence, scaled by fit.** A result from a different setup (data size, hardware, scale) counts for less. Say why in `ruling_why` when it decides a ruling.
+- **Prove when cheap.** Order a proof only for a high, open claim that a small build can settle within the cap. Do not order one for something a measurement or a source can settle.
 - **Measure to settle.** When two estimates disagree and a short command can settle it, run it and add a `fact`. Ask the user before anything long or anything that installs.
 - **Severity is about the decision.** Uphold a high cost only when it would change what gets built. A real but small cost is upheld as low.
 - **Weigh against the goal.** A cost is too high only against what the goal is worth to the user. When that trade is unclear (a week saved for twice the tokens), it is a question for the user, not a ruling.

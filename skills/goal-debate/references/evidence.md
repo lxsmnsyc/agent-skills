@@ -39,6 +39,16 @@ Peak RAM of one command: `/usr/bin/time -l <cmd>` on macOS (maximum resident set
 - Prices: use the claude-api skill for current model prices. Do not quote prices from memory.
 - The debate itself: record each round in `spend`. A debate that costs more than the savings it can find should be short.
 
+## Prior art
+
+Search before arguing. Give each search a few minutes, not an afternoon.
+
+- Papers: search for the method and the task together, and look for benchmark tables on the same metric. Note the setup (data size, hardware) next to the number, because a result on 8 GPUs says little about a laptop.
+- Code: public repos that implement it, their issue trackers (open issues often show where it breaks), and package download counts when picking a dependency.
+- The lab's record: `grep -ril` for the method's names across the repo's `docs/`, past `debate.md` files, experiment outcomes (`nodes/*/outcome.md`, `archive.md`) and decision records. Ask the user which other repos hold the lab's past work. A negative result found here can save the whole debate.
+
+Record each finding as a `fact` with `prior-art` evidence: the citation in `source`, what it found in `detail`. Do not cite a paper you have not read the relevant part of.
+
 ## When it cannot be measured
 
 Write an `estimate` with its basis in `detail` ("3 similar endpoints took 1 day each, git log"). Then either ask the user, plan a spike, or let the judge rule it `open`. Do not dress a guess up as a measurement.

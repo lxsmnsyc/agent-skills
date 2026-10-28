@@ -142,5 +142,38 @@ class DebateTest(unittest.TestCase):
         self.assertIn("- P1: batch job", out)
 
 
+    def test_pending_proof_comes_before_user_questions(self):
+        self.write(claims=[proposal("P1", 1), cost("O1", 1, ["P1"], ruling="open")],
+                   questions=[{"id": "Q1", "by": "opponent", "ask": "Deadline?"}],
+                   proofs=[{"id": "T1", "claim": "O1", "question": "Fits in 8 GB?", "dir": "/tmp/x",
+                            "status": "planned", "cap": {"minutes": 30, "tokens": 100000}}])
+        self.assertEqual(self.status()["next"], "proof")
+
+    def test_proof_checks(self):
+        self.write(claims=[proposal("P1", 1)],
+                   proofs=[{"id": "T1", "claim": "P1", "question": "q", "dir": "/tmp/x", "status": "done",
+                            "result": "fits", "cap": {"minutes": 90, "tokens": 100000}},
+                           {"id": "T2", "claim": "P9", "question": "q", "dir": "/tmp/y", "status": "planned"}])
+        out = json.loads(self.run_debate("check", "--json", check=False).stdout)
+        errors, warnings = "\n".join(out["errors"]), "\n".join(out["warnings"])
+        self.assertIn("T1: a done proof records its result as a judge fact", errors)
+        self.assertIn("T2: a proof settles one claim", errors)
+        self.assertIn("T2: set cap.minutes", errors)
+        self.assertIn("over the default 30", warnings)
+
+    def test_prior_art_needs_source(self):
+        claim = proposal("P1", 1)
+        claim["evidence"] = {"type": "prior-art"}
+        self.write(claims=[claim])
+        result = self.run_debate("check", check=False)
+        self.assertIn("prior-art evidence needs a source", result.stdout)
+
+    def test_research_goal_needs_hypothesis_to_settle(self):
+        self.write(research=True, max_rounds=1, claims=[proposal("P1", 1), cost("O1", 1, ["P1"])])
+        self.assertEqual(self.status()["next"], "judge")
+        self.write(hypothesis={"statement": "s", "metric": "m", "baseline": "b", "threshold": "t", "kill": "k"})
+        self.assertEqual(self.status()["next"], "settle")
+        self.assertIn("## Hypothesis", self.run_debate("report").stdout)
+
 if __name__ == "__main__":
     unittest.main()

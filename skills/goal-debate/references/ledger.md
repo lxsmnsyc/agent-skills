@@ -15,6 +15,10 @@
      "text": "8 GB RAM, 5.4 GB free, load 5.7 on 8 cores",
      "evidence": {"type": "measured", "source": "capacity.py --json", "detail": "evidence/capacity.json"},
      "ruling": "upheld"},
+    {"id": "J2", "round": 1, "by": "judge", "kind": "fact", "axis": "device",
+     "text": "Proof T1: 3.4 GB peak RAM, 6.1 s per photo on 20 photos",
+     "evidence": {"type": "measured", "source": "proof T1", "detail": "evidence/T1.txt"},
+     "ruling": "upheld"},
     {"id": "P1", "round": 1, "by": "proponent", "kind": "proposal",
      "text": "Batch job captions photos with a 4-bit vision model, 50 at a time, resumable",
      "estimate": {"value": 3.5, "unit": "GB RAM peak"},
@@ -35,6 +39,13 @@
      "ask": "Can the backlog run overnight over several days, or must it finish in one run?",
      "answer": "Overnight is fine, done within a week"}
   ],
+  "proofs": [
+    {"id": "T1", "claim": "P1", "question": "Does the 4-bit model caption a photo within 4 GB peak RAM?",
+     "dir": "/tmp/goal-debate/caption-proof", "cap": {"minutes": 30, "tokens": 100000},
+     "status": "done", "result": "3.4 GB peak, 6.1 s per photo on 20 photos", "fact": "J2"}
+  ],
+  "research": false,
+  "hypothesis": null,
   "spend": [
     {"round": 1, "tokens": 48000}
   ]
@@ -74,12 +85,43 @@ Evidence types, strongest first:
 - `measured`: output of a command on this machine or this repo.
 - `calibration`: past estimates against actuals, from `CALIBRATION.md` or git history.
 - `source`: a file, doc, model card or price list.
+- `prior-art`: a paper, a public repo, or the lab's own past debate or experiment. `source` is the citation or path, and `detail` says what it found, including negative results.
 - `user`: an answered question. Set `question` to its id.
 - `estimate`: a reasoned guess. Allowed, but weakest.
 
 ## Questions
 
 `id` (`Q<n>`), `by`, `ask`, `blocks` (claim ids it affects) and `answer`, filled when the user replies. Write `ask` so it makes sense on its own, because the user sees only the question.
+
+## Proofs
+
+| Field | Meaning |
+| --- | --- |
+| `id` | `T<n>`. Unique across claims, questions and proofs. |
+| `claim` | The one claim it settles. |
+| `question` | What it answers, as a yes or no or a number. |
+| `dir` | Scratch directory outside the repo. |
+| `cap` | `{"minutes", "tokens"}`, set before it starts. Defaults 30 and 100000. |
+| `status` | `planned`, `running`, `done` or `abandoned`. |
+| `result` | What it found, or why it was abandoned. |
+| `fact` | The judge's `fact` claim that records the result, for `done`. |
+
+## Hypothesis
+
+Required before a research debate (`"research": true`) can settle. All fields are text.
+
+```json
+"hypothesis": {
+  "statement": "Contrastive pretraining on our 40k labeled scans beats ImageNet init on rare classes",
+  "metric": "macro F1 on the 12 rarest classes, held-out split v3",
+  "baseline": "ImageNet init, 0.41 macro F1 (run 2026-09-12)",
+  "threshold": "at least 0.46, mean of 3 seeds",
+  "kill": "below 0.43 after the 3-seed run, or pretraining over 40 GPU hours",
+  "claims": ["P1", "O4", "Q2"]
+}
+```
+
+`claims` lists the claims and questions it rests on. Change the hypothesis only through a new debate.
 
 ## Spend
 
