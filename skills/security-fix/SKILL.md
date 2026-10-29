@@ -36,7 +36,7 @@ When the reporter or a co-maintainer works on the fix too, use the advisory's te
      - **References**: the CVE and links that are already public.
    - Remove proof-of-concept code, payloads, exact requests, step-by-step reproduction, the vulnerable file and line, internal hosts and paths, and any secret or token.
    - Update the draft with `gh api -X PATCH repos/{owner}/{repo}/security-advisories/{ghsa_id} -F description=@<file>`. Write `<file>` to a temporary folder outside the repo.
-   - The REST API has no endpoint for advisory comments. Post the comment on the advisory page in the Security tab, or give the text to the user to post.
+   - Post the comment with `gh api repos/{owner}/{repo}/security-advisories/{ghsa_id}/comments -F body=@<file>`. Fix a comment with `gh api -X PATCH repos/{owner}/{repo}/security-advisories/{ghsa_id}/comments/{comment_id} -F body=@<file>`.
 4. Update the local `<release-branch>` from the remote (`git fetch origin && git switch <release-branch> && git merge --ff-only origin/<release-branch>`).
 5. Create a local-only branch from `<release-branch>`, for example `security/<short-name>`. Do not set an upstream for it. Then guard it against pushes:
    - When `git config core.hooksPath` prints nothing, add a pre-push hook to `.git/hooks/pre-push` that refuses `refs/heads/security/*`. It blocks `git push`, `git push --all` and `git push --mirror` of the branch, and still lets `<release-branch>` push after the merge. If a `pre-push` hook already exists, add the check at its top instead of replacing it.
