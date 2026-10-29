@@ -108,7 +108,10 @@ python3 skills/repo-setup/scripts/audit.py <repo>
 
 A public pull request or pushed branch reveals a vulnerability before the release that fixes it. A manual `npm publish` hides it, but drops the provenance attestation, and package managers with trust policies then refuse the version. This skill:
 
+- rewrites the advisory description without exploit details, and keeps the original text in a private advisory comment
 - works on a local branch with no upstream, and never opens a pull request
+- reproduces the vulnerability with a failing test, then comments on the advisory that it is confirmed
+- closes the advisory with a comment that says why when it does not reproduce consistently or does not merit an advisory
 - runs the project's checks locally, because CI does not see the code before the merge
 - bumps the version with changesets on the branch, so the push publishes at once instead of opening a version PR
 - merges into the branch the release workflow publishes from and pushes it only after the user confirms, and only for a public repo
