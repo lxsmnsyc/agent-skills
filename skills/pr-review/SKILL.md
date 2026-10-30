@@ -49,6 +49,8 @@ Check the repo's visibility. On a private repo, never trigger, re-run or wait on
 
 `worktrees.py prepare` puts the base (the merge base the PR was written against) and the head side by side. Use `--tip` to test against the current tip of the base branch when the base has moved a lot since the PR was opened.
 
+Both worktrees get the gitignored files that `.worktreeinclude` names (such as `.env`), copied from the current checkout and listed under `copied`. A check that fails in both worktrees for lack of a gitignored file is not the PR's fault. Report the missing file and suggest adding its pattern to `.worktreeinclude`.
+
 Install dependencies in each worktree only when a step needs to run code (`checks.py --install`). Installs are slow, so do it once per worktree.
 
 ### 3. Evaluate by type

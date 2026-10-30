@@ -1,7 +1,7 @@
 {
   "name": "agent-skills",
   "description": "Agent skills by lxsmnsyc: parallel-roadmap, goal-debate, pr-author, pr-review, perf-pass, changesets, repo-setup, security-fix, ts-style and plain-writing. Debate a goal's cost before planning it, plan work as a dependency graph, ship small independent pull requests, review with evidence, measure performance, set up library repos, ship security fixes without leaking them, and write short, exact prose.",
-  "version": "0.10.0",
+  "version": "0.12.0",
   "author": {
     "name": "Alexis Munsayac",
     "url": "https://github.com/lxsmnsyc"

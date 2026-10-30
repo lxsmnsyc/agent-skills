@@ -15,6 +15,8 @@ How to run nodes with several agents at once, ship their work, and keep the plan
 - Sequential mode
 - Already fulfilled work
 - Merging and verification
+- Auto-merge
+- Direct commits
 - Shared and exclusive resources
 - Contract change requests
 - Gates
@@ -24,14 +26,14 @@ How to run nodes with several agents at once, ship their work, and keep the plan
 ## Roles
 
 - **Orchestrator**: the main agent in the user's session. It is the only one that edits `status` fields, contracts and other shared roadmap files. A single writer for shared state removes a whole class of conflicts.
-- **Workers**: one per node, each in its own git worktree on its own branch (in sequential mode, the worktree is optional). A worker edits its owned paths and its own `nodes/<id>/` folder, and opens one pull request.
+- **Workers**: one per node, each in its own git worktree on its own branch (in sequential mode, the worktree is optional). A worker edits its owned paths and its own `nodes/<id>/` folder, and opens one pull request, or none when the node ships as a direct commit.
 - **Reviewer**: a fresh-context agent that reviews each pull request (the pr-review skill, if installed), and reviews the plan itself during the stress test.
 - **Curator**: runs at checkpoints. See `memory.md`.
 - **Maintainer**: the person who approves and merges pull requests. By default the repo owner or the user. Agents never approve their own work.
 
 ## One pull request per node
 
-Each node ships as its own pull request against its target branch: the main branch in trunk-based repos, or the branch the policy in `GOAL.md` gives for the node's type in gitflow-style repos (for example features to `dev`). This is the default because it keeps every piece of work mergeable on its own: nothing waits for a large integration branch to be finished.
+Each node ships as its own pull request against its target branch: the main branch in trunk-based repos, or the branch the policy in `GOAL.md` gives for the node's type in gitflow-style repos (for example features to `dev`). This is the default because it keeps every piece of work mergeable on its own: nothing waits for a large integration branch to be finished. A node that no person reviews on its own (a story child, or small work under `merge.mode: auto`) skips the pull request and lands as one direct commit instead (see "Direct commits"). The rules below hold for both.
 
 What makes this safe:
 
@@ -42,7 +44,7 @@ What makes this safe:
 
 On a private repo, pushing a branch can start billed CI runs. Check `gh repo view --json visibility` before the first push. If the repo is private, ask the user whether to push, or to keep branches local, run the checks locally, and merge locally.
 
-A node is `done` when its pull request is merged into its target. Track the pull request number in the brief's body (not in frontmatter) or in the outcome.
+A node is `done` when its pull request is merged into its target, or its commit has landed there. Track the pull request number or commit hash in the brief's body (not in frontmatter) or in the outcome.
 
 With several stages (`dev -> next -> main`), work moves on through release nodes: a `type: release` node is one promotion pull request (for example `dev` into `next`), gated for the user. When a release node into the last stage merges, the curator sets the nodes it shipped to `released`. Promotion carries everything that is on the source branch, not only the nodes the release was planned for. So before a release node runs, decide for each other open node targeting the same branch: merge it after the cut, put it behind a feature flag that stays off, or include it in the release on purpose. `plan.py check` lists those nodes as a warning on the release node. When the release node has a `milestone`, `check` also lists the open nodes of that milestone that it does not wait for. Waiting through other nodes counts. So a planned node cannot miss the release.
 
@@ -53,7 +55,7 @@ Hotfix nodes target the released branch directly, and the worker opens the back-
 A story is one feature on its own branch, `feat/<story id>`. Its children are nodes whose `target` in `ready --json` is that branch.
 
 1. **Open the branch.** When the first child becomes ready, create the story branch from the story's target: `git branch feat/<story id> <target>`. Push it, unless the repo is private and the user keeps branches local (see "One pull request per node"). Set the story to `status: active` in the same status commit as the child.
-2. **Children.** Each child runs as a normal node: worker, worktree, review, outcome. Its worktree must start from the story branch, so the worker prompt tells it to reset to `<target>` before its first commit. Merge each child into the story branch with a merge commit, not a squash, so the story keeps one commit per child. With `merge.stories: auto` (the default), the orchestrator merges a child when `plan.py can-merge` allows it. This holds even when `merge.mode` is `maintainer`, because the maintainer reviews the whole story later. The exclusions still apply: a gated child or one that provides a contract goes to the maintainer.
+2. **Children.** Each child runs as a normal node: worker, worktree, review, outcome. Its worktree must start from the story branch, so the worker prompt tells it to reset to `<target>` before its first commit. By default a child has `ship: commit` in `ready --json`: it opens no pull request, and the orchestrator lands it on the story branch as one commit (see "Direct commits"), so the story keeps one commit per child. A child with `ship: pr` opens a pull request against the story branch, merged with a merge commit, not a squash. With `merge.stories: auto` (the default), the orchestrator lands a child when `plan.py can-merge` allows it. This holds even when `merge.mode` is `maintainer`, because the maintainer reviews the whole story later. The exclusions still apply: a gated child or one that provides a contract goes to the maintainer.
 3. **Early children.** A child with `early: true` targets the story's target, not the story branch, and follows the normal merge rules. After it merges, merge the target into the story branch so later children build on it.
 4. **Keep the branch current.** At every checkpoint, merge the story's target into the story branch, and run the fast check there. Conflicts found now are cheap. Conflicts found when the story pull request opens hold up the whole feature.
 5. **The story pull request.** When every child is done, `ready --json` lists the story with `"action": "story-pr"`. No worker runs. Open a pull request from the story branch into its target, titled from `pr_title`, and list the children with their outcomes in the description. Spawn one fresh reviewer with the pr-review skill for the whole branch. Then hand it to the maintainer, since `story` is in the default `merge.exclude`. When it merges, set the story to `done`.
@@ -102,7 +104,7 @@ Waves printed by `plan.py status` are a forecast in both modes. The decision to 
 4. Set each one to `status: active` and commit that to the main branch. For a story's first child, also create the story branch and set the story `active` (see "Stories"). Keep the commit to the brief files only.
 5. Spawn the workers in a single message so they run at the same time (see "Spawning a worker"). In sequential mode, spawn only the first one.
 6. When a worker returns, act on its reply (see "Merging and verification"). In `self` mode the worker has already reviewed and checked it. In `fresh` mode, spawn the reviewer.
-7. When the pull request merges, set `status: done` and `spent:` (the tokens of the worker, the reviewer and any fix rounds, added up from their usage reports), and run the curator at checkpoints.
+7. When the pull request merges or the commit lands, set `status: done` and `spent:` (the tokens of the worker, the reviewer and any fix rounds, added up from their usage reports), and run the curator at checkpoints.
 8. Stop at gates (see "Gates"). At checkpoints, end the session (see "Keeping the orchestrator's context small"). Otherwise go to step 1.
 
 ## Keeping the orchestrator's context small
@@ -115,9 +117,9 @@ The orchestrator is usually the most expensive agent in a run. It reads its whol
 
 ## Spawning a worker
 
-Use the Agent tool with `isolation: "worktree"` and the model from `ready --json`. Agent worktrees start on a generated branch such as `worktree-agent-<hash>`; the worker renames it to the `branch` from `ready --json` (`feat/<node id>`, `fix/<node id>` and so on) before its first commit, and uses `pr_title` for the pull request, so branches and pull requests read like the roadmap. Fill in `templates/worker-prompt.md`. The prompt names the node, the root, the base branch and the exact context files. It does not paste their contents, so the worker reads the current versions.
+Use the Agent tool with `isolation: "worktree"` and the model from `ready --json`. Agent worktrees start on a generated branch such as `worktree-agent-<hash>`; the worker renames it to the `branch` from `ready --json` (`feat/<node id>`, `fix/<node id>` and so on) before its first commit, and uses `pr_title` for the pull request (or the landed commit), so branches and pull requests read like the roadmap. Fill in `templates/worker-prompt.md`. The prompt names the node, the root, the base branch and the exact context files. It does not paste their contents, so the worker reads the current versions.
 
-Before spawning, check that the base branch already contains what the worker needs: the frozen contracts and the outcomes of its dependencies.
+Before spawning, check that the base branch already contains what the worker needs: the frozen contracts and the outcomes of its dependencies. Agent worktrees start without the gitignored files of the main checkout. Claude Code copies the ones that `.worktreeinclude` names, so when the checks need a file such as `.env`, check that its pattern is listed there.
 
 Check the machine before a wide wave. Each worktree may need its own dependency install and dev server. If memory is tight or the load is high, lower `--max-parallel`. The pr-author skill has a capacity check for this.
 
@@ -130,7 +132,7 @@ Worktrees keep parallel workers apart. With one worker there is nothing to keep 
 - **Main checkout**: spawn the worker without `isolation`. Before the first node of a session, run `git status` and ask the user once whether the worker may switch branches in their checkout. Only use it when the tree is clean and the user agrees. The worker runs `git fetch` and `git switch -c <branch> <target>` itself. When it returns, switch the checkout back to the base branch before the next status commit.
 - **One worktree**: otherwise, spawn with `isolation: "worktree"` as usual, or keep one worktree from pr-author's `wt.py` and reuse it for every node.
 
-Everything else stays the same: one branch and one pull request per node, outcomes, reviews and gates. The ready list still holds every node that could start. Take the first.
+Everything else stays the same: one branch and one change per node, outcomes, reviews and gates. The ready list still holds every node that could start. Take the first.
 
 ## Already fulfilled work
 
@@ -150,7 +152,7 @@ A passing `verify` command is a signal, not proof. Read the code before closing 
 
 ## Merging and verification
 
-Each pull request is reviewed once and checked once, in the review mode `ready --json` gave it (`review`, from the `review:` setting in `GOAL.md`). In `self` mode the worker reviews its own branch and runs the full check. In `fresh` mode the orchestrator spawns one reviewer, because a worker running as a subagent cannot spawn agents. The orchestrator works from the replies. For each finished worker (closing a node also means ticking its acceptance boxes in the brief, or saying which ones the existing code covers):
+Each pull request is reviewed once and checked once, in the review mode `ready --json` gave it (`review`, from the `review:` setting in `GOAL.md`). In `self` mode the worker reviews its own branch and runs the full check. In `fresh` mode the orchestrator spawns one reviewer, because a worker running as a subagent cannot spawn agents. The orchestrator works from the replies. A `ship: commit` node has no pull request: skip the draft and ready steps below, and land it as "Direct commits" describes. For each finished worker (closing a node also means ticking its acceptance boxes in the brief, or saying which ones the existing code covers):
 
 1. If the reply reports a blocker, an unresolved deviation or a change request, resolve it first. When that needs reading code or logs, spawn an agent to do it and keep only its answer (see "Keeping the orchestrator's context small").
 2. Check the owned paths with the script instead of reading the diff: `git diff --name-only <base>...<branch> | plan.py <root> can-merge <id> --files -`. Any "changes outside the node's paths" reason matters in every merge mode. Changes outside owned paths are the main source of merge conflicts and hidden coupling. Either accept them and note them in the outcome, or send the worker back.
@@ -195,6 +197,20 @@ Pass `--fresh-review` only when a fresh agent did the review. A node in self mod
 Exit code 1 (`maintainer`) lists the reasons; hand the pull request to the maintainer with them. If branch protection on the base requires approvals, auto-merge cannot work; say so and keep the maintainer mode.
 
 At every checkpoint, report what merged on its own, with links, so the user sees it without asking.
+
+## Direct commits
+
+A node with `ship: commit` in `ready --json` opens no pull request. `plan.py` gives it that only when the orchestrator may land it without the maintainer (see "Pull request or direct commit" in `SKILL.md`). That covers story children on their story branch, and S, docs or chore nodes under `merge.mode: auto`. The worker builds, reviews and checks the branch as usual and replies with the branch name. Then:
+
+1. Run `can-merge` as in "Auto-merge". A verdict of `auto` with method `commit` lets the commit land. With `maintainer`, push the branch and open a pull request against the target for the maintainer, with the reasons.
+2. In the worker's worktree (or the checkout that has the branch), rebase onto the current target: `git fetch`, then `git rebase <target>` (`origin/<target>` when the branch is pushed). If the target moved, rerun the fast check.
+3. Squash the branch into one commit. Use `pr_title` as the subject and link the brief in the body: `git reset --soft <target>`, then `git commit -m "<pr_title>" -m "Roadmap node: <root>/nodes/<id>/brief.md"`. Follow the repo's commit convention when it differs.
+4. Fast-forward the target to it. With a remote: `git push origin HEAD:<target>`. Git rejects the push when the target moved meanwhile. Then go back to step 2. When branches stay local and a checkout has the target checked out, run `git merge --ff-only <branch>` there, only when its tree is clean. When no checkout has it, run `git fetch . <branch>:<target>`. Never force the update.
+5. Delete the node's branch. Record the commit hash in the outcome, set the node to `done`, and run the checks on the updated target. If they fail, revert the commit on the target at once. Set the node back to `todo` with the failure in its log, and tell the user.
+
+A push rejected by branch protection means the target requires pull requests. Open one for the node, and set `merge.commits: off` in `GOAL.md`, or `ship: pr` on the nodes that target that branch.
+
+On a private repo, a push to the target can start billed CI, the same as a merge. Pass `--ci-guard ask` to `can-merge` when pr-author's `ci_guard.py` says so. The node then goes to the maintainer.
 
 ## Shared and exclusive resources
 
@@ -244,4 +260,4 @@ Workflow({ scriptPath: "<skill>/scripts/wave.workflow.js",
 // sequential mode: add sequential: true, and isolation: "none" to use the current checkout
 ```
 
-It returns each worker's report (branch, pull request, status) and the curator's proposals.
+It returns each worker's report (branch, pull request or empty for `ship: commit` nodes, status) and the curator's proposals. The orchestrator lands commits and merges pull requests afterwards.

@@ -16,6 +16,7 @@ For each category, either point to the node that covers it or write "N/A" with a
 - **Observability**: logs, metrics, how to tell in production that it works.
 - **Performance**: baseline, budget, how it is measured, which benchmark proves it.
 - **Testing**: unit, integration, end to end; what the contract tests check; whether the checks can run in parallel worktrees.
+- **Local files**: gitignored files the checks need (such as `.env`), listed in `.worktreeinclude` so new worktrees get a copy.
 - **Developer experience**: error messages, docs, types, examples, generated reference docs.
 - **Rollout**: feature flags, staged release, how to turn it off.
 - **Cleanup**: stubs left behind, old code paths to remove, temporary flags.

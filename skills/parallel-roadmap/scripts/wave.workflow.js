@@ -8,15 +8,16 @@ export const meta = {
   ],
 }
 
-// args: { root, skill, base, nodes: [{ id, title, model, branch, pr_title, mode, review, target, story, action,
+// args: { root, skill, base, nodes: [{ id, title, model, branch, pr_title, mode, review, ship, target, story, action,
 //         context: [paths] }], sequential?, isolation? }
 // `base` is the branch pull requests target (usually main). Check it out before running,
 // so worktrees start from it. A node with a `target` (a story child) builds on that branch instead.
 // Nodes with `action: story-pr` are skipped: the orchestrator opens a story's pull request itself. `sequential: true` (or `mode: sequential` on the nodes) runs
 // the workers one after another. `isolation: 'none'` then runs them in the current checkout
 // instead of worktrees; only use it when the tree is clean and the user agreed. Each worker reviews
-// its own pull request in its `review` mode. The orchestrator merges, updates status and handles gates
-// after this returns.
+// its own pull request in its `review` mode. Nodes with `ship: commit` open no pull request: the
+// orchestrator squashes and lands their branch as one commit. The orchestrator merges, lands commits,
+// updates status and handles gates after this returns.
 
 const REPORT = {
   type: 'object',
@@ -101,7 +102,9 @@ Then:
 10. ${(n.review || 'fresh') === 'self'
     ? "Review the branch yourself, as step 6 of the pr-author skill describes: read your own diff as a reviewer would, go through pr-review's references/evaluation.md, and run the full checks once. Fix what you find, for at most two rounds. Report review_mode self, review_rounds, review_clean and checks_pass."
     : 'Do not review the branch: a fresh reviewer runs after you. Report review_mode none, review_rounds 0, review_clean false, and checks_pass for the fast check.'}
-11. Push the branch and open a pull request against \`${baseOf(n)}\` (follow the pr-author skill if it is installed). Link \`${root}/nodes/${n.id}/brief.md\` in the description. Do not merge or approve it. Report its number as pr, or "" if you made no pull request.`
+11. ${n.ship === 'commit'
+    ? `Open no pull request and do not push to \`${baseOf(n)}\`: the orchestrator squashes your branch into one commit and lands it on \`${baseOf(n)}\`. Report pr as "".`
+    : `Push the branch and open a pull request against \`${baseOf(n)}\` (follow the pr-author skill if it is installed). Link \`${root}/nodes/${n.id}/brief.md\` in the description. Do not merge or approve it. Report its number as pr, or "" if you made no pull request.`}`
 }
 
 function runWorker(n) {

@@ -12,6 +12,10 @@ Worktrees live in .worktrees/ at the repo root. The folder is added to
 .git/info/exclude, so it never shows up in `git status` and is never committed,
 while it stays easy to open in an editor.
 
+`wt.py new` copies the gitignored files named in .worktreeinclude (gitignore
+syntax, for example `.env`) from the main checkout into the new worktree, the
+same way Claude Code does for the worktrees it creates.
+
 prune-merged asks GitHub for the branch's merged pull request when `gh` works,
 which finds squash and rebase merges, and falls back to commit ancestry. A
 branch with commits newer than its merged PR is kept.
@@ -26,6 +30,7 @@ port = 3000 + 10 * index). `wt.py new` and `wt.py list` print it.
 import argparse
 import json
 import os
+import shutil
 import subprocess
 import sys
 import time
@@ -81,6 +86,24 @@ def write_meta(path, data):
     f.write_text(json.dumps(data))
 
 
+def copy_included(src, dest):
+    """Copy the gitignored files that .worktreeinclude names (such as .env) from src to a
+    new worktree, as Claude Code does for the worktrees it creates. Returns the paths."""
+    if not (src / ".worktreeinclude").is_file():
+        return []
+    def listed(*flags):
+        out = subprocess.run(["git", "ls-files", "-z", "--others", "--ignored", *flags],
+                             capture_output=True, text=True, cwd=src).stdout
+        return {p for p in out.split("\0") if p and not p.endswith("/")}
+    # Only files that are both named and gitignored, so tracked files are never overwritten.
+    paths = sorted(listed("--exclude-from=.worktreeinclude") & listed("--exclude-standard"))
+    for rel in paths:
+        target = dest / rel
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(src / rel, target)
+    return paths
+
+
 def slug(branch):
     return branch.replace("/", "-")
 
@@ -101,8 +124,9 @@ def new(args):
     used = {meta(Path(w["worktree"])).get("index") for w in worktrees()}
     index = next(i for i in range(1, 1000) if i not in used)
     write_meta(path, {"index": index, "base": args.base, "created_at": git("rev-parse", "HEAD", cwd=path)})
+    copied = copy_included(repo, path)
     print(json.dumps({"branch": args.branch, "path": str(path), "base": args.base,
-                      "started_from": start, "index": index}, indent=2))
+                      "started_from": start, "index": index, "copied": copied}, indent=2))
 
 
 def list_(args):

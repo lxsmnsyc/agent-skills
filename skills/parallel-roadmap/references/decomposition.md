@@ -57,7 +57,7 @@ Pick the one that matches the shape of the work.
 
 ## When not to split
 
-A node is one pull request. Every node has a fixed cost: loading context, setting up a worktree, writing an outcome, a review, a merge, and the checks. Splitting only pays when the parts can run at the same time, or when one part is risky enough to ship alone. Merge nodes when:
+A node is one change, shipped as a pull request or a direct commit. Every node has a fixed cost: loading context, setting up a worktree, writing an outcome, a review, a merge, and the checks. A direct commit saves the pull request, not the rest. Splitting only pays when the parts can run at the same time, or when one part is risky enough to ship alone. Merge nodes when:
 
 - Both are S and own the same files.
 - One would take less effort than writing its brief.
@@ -69,7 +69,7 @@ Balance waves too. A wave takes as long as its slowest node, so if one L sits in
 
 ## Stories
 
-A story groups the nodes of one feature on one branch (see "Stories" in `SKILL.md` for the fields). Children follow the same rules as any node. Each child is one reviewable pull request, sized by the rubric, and the split strategies above apply inside a story.
+A story groups the nodes of one feature on one branch (see "Stories" in `SKILL.md` for the fields). Children follow the same rules as any node. Each child is one reviewable change, sized by the rubric, landed on the story branch as a direct commit by default, and the split strategies above apply inside a story.
 
 Make a story when:
 
@@ -79,7 +79,7 @@ Make a story when:
 
 Do not make a story when:
 
-- One node is enough. A story with one child is a node with an extra pull request.
+- One node is enough. A story with one child is a node with an extra branch and review.
 - Each part is useful on its own. Separate nodes reach users sooner.
 - The work is a refactor across the codebase. Expand, migrate, contract keeps each step on the main branch, so a long-lived branch only adds conflicts.
 

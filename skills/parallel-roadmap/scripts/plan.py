@@ -5,6 +5,8 @@ Reads <root>/nodes/*/brief.md and <root>/contracts/*.md frontmatter. Stdlib only
 With `release:` in GOAL.md, nodes of later milestones are held until the first open release ships.
 A `type: story` node groups child nodes (`story: <id>`) on one feature branch: the children's pull
 requests target the story branch, and the story itself is one pull request into the parent branch.
+A node ships as a pull request, or as one direct commit onto its target when the merge policy lets
+the orchestrator land it without the maintainer (see ship_mode).
 
 Usage:
   plan.py <root> status            # check + waves + critical path (default)
@@ -18,7 +20,7 @@ Usage:
   plan.py <root> overview          # readable summary of the plan, grouped by milestone
   plan.py <root> archive [--apply]   # done nodes nothing open needs: remove folders, list in archive.md
   plan.py <root> can-merge <id> --review-clean --checks-pass [--proof] [--fresh-review] --files - < changed.txt
-                                   # may the orchestrator merge this node's PR itself? exit 0 = yes
+                                   # may the orchestrator merge this node's PR (or land its commit) itself? exit 0 = yes
 Options: --json, --max-parallel N (default 4; 1, or `run: sequential` in GOAL.md, means sequential), --budget TOKENS (default 20000),
          --upto must|should|could|later (default could: schedule everything except parked work)
 """
@@ -178,6 +180,7 @@ def archived_node(root, nid, entry):
         "fulfilled_by": entry.get("ref"), "type": None, "target": None, "from": None,
         "outline": False, "milestone": entry.get("milestone"), "archived": True,
         "spent": int(entry.get("spent") or 0), "story": None, "early": False,
+        "ship": "auto",
     }
 
 
@@ -222,6 +225,8 @@ def load(root):
             # Story children: the story they belong to, and whether they land on the parent branch first.
             "story": str(fm["story"]) if fm.get("story") not in (None, "", []) else None,
             "early": bool(fm.get("early")),
+            # pr: always a pull request. commit: one direct commit onto the target when allowed. auto: decide.
+            "ship": str(fm.get("ship") or "auto").strip().lower(),
             "archived": False,
         }
     for nid, entry in read_archive(root).items():
@@ -662,8 +667,16 @@ def find_cycle(ids, preds):
 # Commands
 # ---------------------------------------------------------------------------
 
-def check(nodes, contracts, load_errors, policy=None, milestones=None, release=None):
+def check(nodes, contracts, load_errors, policy=None, milestones=None, release=None, merge=None):
     errors, warnings = list(load_errors), []
+    for nid, n in live(nodes).items():
+        if n["ship"] not in SHIP_MODES:
+            warnings.append(f"node {nid}: ship '{n['ship']}' not in {sorted(SHIP_MODES)}; using auto")
+        elif n["ship"] == "commit" and n["status"] not in DONE and \
+                ship_mode(n, nodes, merge or MERGE_DEFAULTS) != "commit":
+            why = (["a story ships as its own pull request"] if n["type"] == "story"
+                   else merge_blockers(n, nodes, merge or MERGE_DEFAULTS) or ["merge.commits is off"])
+            warnings.append(f"node {nid}: ship commit, but it ships as a pull request: " + "; ".join(why))
     if milestones:
         for nid, n in live(nodes).items():
             if n["milestone"] and n["milestone"] not in milestones:
@@ -1124,7 +1137,8 @@ def overview(root, nodes, contracts, s, milestones, warnings, release=None, held
 
 SIZE_ORDER = ["S", "M", "L", "XL"]
 MERGE_DEFAULTS = {"mode": "maintainer", "method": "squash", "max_size": "M",
-                  "exclude": ["release", "hotfix", "contract", "gate", "story"], "stories": "auto"}
+                  "exclude": ["release", "hotfix", "contract", "gate", "story"], "stories": "auto",
+                  "commits": "auto"}
 
 
 def merge_policy(root):
@@ -1182,14 +1196,11 @@ def review_mode(n, setting="auto"):
     return "fresh"
 
 
-def can_merge(nid, nodes, policy, review_clean, checks_pass, proof, files, ci_guard="safe",
-              review="fresh", fresh_review=False, held_by=None):
-    """Decide whether the orchestrator may merge a node's pull request itself.
+SHIP_MODES = {"auto", "pr", "commit"}
 
-    Returns {"verdict": "auto" | "maintainer", "reasons": [...]}. Every reason is a
-    condition that failed; an empty list with mode auto means the merge may go ahead.
-    """
-    n = nodes[nid]
+
+def merge_blockers(n, nodes, policy):
+    """Reasons from the merge policy alone why the orchestrator may not merge `n` without the maintainer."""
     reasons = []
     # A child merging into its story branch reaches the maintainer in the story's pull request.
     child = on_story_branch(n, nodes)
@@ -1208,6 +1219,38 @@ def can_merge(nid, nodes, policy, review_clean, checks_pass, proof, files, ci_gu
     if n["size"] in SIZE_ORDER and limit in SIZE_ORDER and \
             SIZE_ORDER.index(n["size"]) > SIZE_ORDER.index(limit):
         reasons.append(f"size {n['size']} is above the limit {limit}")
+    return reasons
+
+
+def ship_mode(n, nodes, policy):
+    """How a node's change lands on its target: `commit` (one direct commit) or `pr`.
+
+    A direct commit skips the pull request, so only work the orchestrator may merge without the
+    maintainer qualifies: a child on its story branch, or any node under `merge.mode: auto`, within
+    the exclusions and the size limit. With `ship: auto`, story children and S, docs or chore nodes
+    qualify; `ship: commit` asks for it on any node that passes the policy.
+    """
+    want = n.get("ship") or "auto"
+    if n["type"] == "story" or want == "pr" or str(policy.get("commits")).lower() in ("off", "false"):
+        return "pr"
+    if merge_blockers(n, nodes, policy):
+        return "pr"
+    if want == "commit" or on_story_branch(n, nodes) or n["size"] == "S" or n["type"] in ("docs", "chore"):
+        return "commit"
+    return "pr"
+
+
+def can_merge(nid, nodes, policy, review_clean, checks_pass, proof, files, ci_guard="safe",
+              review="fresh", fresh_review=False, held_by=None):
+    """Decide whether the orchestrator may merge a node's pull request, or land its commit, itself.
+
+    Returns {"verdict": "auto" | "maintainer", "reasons": [...], "method": ...}. Every reason
+    is a condition that failed; an empty list means the merge may go ahead. Method `commit`
+    means the node ships as one direct commit onto its target, with no pull request.
+    """
+    n = nodes[nid]
+    child = on_story_branch(n, nodes)
+    reasons = merge_blockers(n, nodes, policy)
     if n["status"] != "active":
         reasons.append(f"status is {n['status']}, not active")
     if not review_clean:
@@ -1231,7 +1274,8 @@ def can_merge(nid, nodes, policy, review_clean, checks_pass, proof, files, ci_gu
     if outside:
         reasons.append("changes outside the node's paths: " + ", ".join(outside[:5]))
     # Children merge into the story branch without squashing, so the story keeps one commit per child.
-    method = "merge" if child else policy.get("method", "squash")
+    method = ("commit" if ship_mode(n, nodes, policy) == "commit"
+              else "merge" if child else policy.get("method", "squash"))
     return {"node": nid, "verdict": "maintainer" if reasons else "auto", "reasons": reasons,
             "method": method}
 
@@ -1446,7 +1490,8 @@ def main():
     apply_targets(nodes, policy)
     milestones = goal_milestones(args.root)
     release = release_settings(args.root)
-    errors, warnings = check(nodes, contracts, load_errors, policy, milestones, release)
+    errors, warnings = check(nodes, contracts, load_errors, policy, milestones, release,
+                             merge_policy(args.root))
     warnings += setting_warnings(args.root)
     warnings += spend_warnings(spend(nodes, token_budget(args.root)))
     held = release_fence(nodes, milestones, release)
@@ -1505,7 +1550,7 @@ def main():
         if args.json:
             print(json.dumps(r, indent=2))
         else:
-            print(f"{args.node}: {r['verdict']}" + ("" if r["verdict"] == "auto" else ":"))
+            print(f"{args.node}: {r['verdict']}" + (f" ({r['method']})" if r["verdict"] == "auto" else ":"))
             for reason in r["reasons"]:
                 print(f"  - {reason}")
         sys.exit(0 if r["verdict"] == "auto" else 1)
@@ -1574,6 +1619,7 @@ def main():
         ids = ready(nodes, contracts, args.upto,
                     held if release and release["fence"] == "start" else None)
         rs = review_setting(args.root)
+        mp = merge_policy(args.root)
         if args.json:
             print(json.dumps([{
                 "id": k, "title": nodes[k]["title"], "size": nodes[k]["size"],
@@ -1584,6 +1630,8 @@ def main():
                 "target": nodes[k].get("target_eff"),
                 "branch": branch_name(nodes[k]),
                 "pr_title": pr_title(nodes[k]),
+                # pr: the worker opens a pull request. commit: no pull request, the orchestrator lands one commit.
+                "ship": ship_mode(nodes[k], nodes, mp),
                 "model": model_for(nodes[k]), "gate": nodes[k]["gate"], "mode": mode,
                 "review": review_mode(nodes[k], rs),
                 "held_by": held.get(k),
@@ -1600,7 +1648,9 @@ def main():
                           f"{nodes[k].get('target_eff') or 'main'}]  {nodes[k]['title']}")
                     continue
                 part = f", story {nodes[k]['story']}" if story_of(nodes[k], nodes) else ""
-                print(f"{k}  [{nodes[k]['size']}, {model_for(nodes[k])}, {review_mode(nodes[k], rs)} review{hold}{part}]  {nodes[k]['title']}")
+                ship = ", direct commit" if ship_mode(nodes[k], nodes, mp) == "commit" else ""
+                print(f"{k}  [{nodes[k]['size']}, {model_for(nodes[k])}, {review_mode(nodes[k], rs)} review"
+                      f"{ship}{hold}{part}]  {nodes[k]['title']}")
             if not ids:
                 print("nothing ready")
             elif mode == "sequential":
