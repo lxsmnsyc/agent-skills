@@ -13,6 +13,10 @@ merge:
   # Children of a story merge into the story branch. auto (the default): the orchestrator merges them
   # when `plan.py can-merge` allows it, and the maintainer reviews the story's pull request.
   # stories: auto
+  # Nodes the orchestrator may land alone ship as one direct commit instead of a pull request:
+  # story children, and S, docs or chore nodes under mode auto. off: every node gets a pull request,
+  # e.g. when branch protection requires pull requests.
+  # commits: auto
 branches:
   # Leave this empty when every pull request targets one branch.
   # For gitflow-style repos, fill it from pr-review's branch_policy.py, for example:

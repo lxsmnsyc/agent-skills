@@ -1,0 +1,11 @@
+schema_version: "1.1"
+name: direct-commit-landing
+expected_outcome: |
+  Two workers are done in a local-only repo with the default merge policy (mode maintainer).
+  profile-setup is a child of the onboarding story, so plan.py gives it `ship: commit`: the
+  agent runs can-merge, opens no pull request, squashes feat/profile-setup into one commit titled
+  from pr_title and fast-forwards feat/onboarding to it, then sets the node done with the commit
+  hash recorded. docs-readme is a standalone S docs node under maintainer mode, so can-merge
+  says maintainer: it is not landed on main and is handed to the user with the reason.
+context:
+  scaffold_script: place-files.sh

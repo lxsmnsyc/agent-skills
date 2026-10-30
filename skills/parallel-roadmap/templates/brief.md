@@ -8,7 +8,8 @@ story:                  # the story this node is part of. Its pull request targe
 early: false            # story children only: lands on the parent branch before the story, e.g. a hot file split or a fix other work needs
 outline: false          # true for far-off work that is not broken into a brief yet: goal, priority, rough deps and size only
 milestone:              # optional group from the milestones list in GOAL.md, e.g. a quarter or a release. Required on release nodes that publish from one branch
-target:                 # branch the pull request targets; empty means the branch policy for this type
+target:                 # branch the change targets. Empty means the branch policy for this type
+ship: auto              # auto: plan.py picks pr or commit from the merge policy | pr: always a pull request | commit: one direct commit when the policy allows
 from:                   # release nodes only: the branch being promoted (target is where it goes)
 size: M                 # S | M | L | XL (XL must be split)
 spike: false            # true for nodes that answer a question instead of shipping code
