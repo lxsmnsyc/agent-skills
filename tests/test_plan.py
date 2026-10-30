@@ -92,6 +92,38 @@ class PlanTest(unittest.TestCase):
         self.assertEqual(fm["depends_on"], [{"on": "b", "kind": "hard", "why": "needs: b"}])
         self.assertIs(fm["gate"], True)
 
+    def test_inline_comments(self):
+        text = textwrap.dedent("""\
+            ---
+            review: fresh  # the maintainer's choice
+            owns:
+              - src/a  # first
+              - "src/b # kept"
+            merge:
+              mode: auto  # trial
+              method: 'squash # kept'
+            color: "#fff"
+            tag: a#b
+            note: "x" # it's fine
+            ---
+            """)
+        fm = plan.parse_frontmatter(text, "t")
+        self.assertEqual(fm["review"], "fresh")
+        self.assertEqual(fm["owns"], ["src/a", "src/b # kept"])
+        self.assertEqual(fm["merge"], {"mode": "auto", "method": "squash # kept"})
+        self.assertEqual(fm["color"], "#fff")
+        self.assertEqual(fm["tag"], "a#b")
+        self.assertEqual(fm["note"], "x")
+
+    def test_review_setting_with_comment_and_typo_warning(self):
+        goal = self.root / "GOAL.md"
+        goal.write_text("---\nreview: fresh  # the maintainer's choice\n---\n")
+        self.assertEqual(plan.review_setting(self.root), "fresh")
+        self.assertEqual(plan.setting_warnings(self.root), [])
+        goal.write_text("---\nreview: frsh\n---\n")
+        self.assertEqual(plan.review_setting(self.root), "auto")
+        self.assertEqual(len(plan.setting_warnings(self.root)), 1)
+
     def test_contract_dependency_starts_after_freeze(self):
         contract(self.root, "api", status="draft", defined_by="c")
         node(self.root, "c", size="S", owns="[src/api.ts]", provides="[api]")
