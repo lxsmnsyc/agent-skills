@@ -31,6 +31,8 @@ Run `capacity.py`. It weighs free memory, CPU load, free disk and existing workt
 
 Never work directly in the user's main checkout when it has uncommitted changes. Those are theirs.
 
+A new worktree has none of the main checkout's gitignored files, such as `.env`, so tests and dev servers that need them fail there. `wt.py new` copies the gitignored files that `.worktreeinclude` names (gitignore syntax, at the repo root) and lists them under `copied`. Claude Code does the same for the worktrees it creates. When checks need a gitignored file and the repo has no `.worktreeinclude`, tell the user and suggest adding one with that file's pattern.
+
 Each worktree has an index (shown by `wt.py new` and `wt.py list`). When a dev server or test database needs a port, derive it from the index (for example `3000 + 10 * index`) so parallel worktrees do not collide.
 
 ### 2. Branch from the right base

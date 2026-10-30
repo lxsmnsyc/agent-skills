@@ -117,7 +117,7 @@ The orchestrator is usually the most expensive agent in a run. It reads its whol
 
 Use the Agent tool with `isolation: "worktree"` and the model from `ready --json`. Agent worktrees start on a generated branch such as `worktree-agent-<hash>`; the worker renames it to the `branch` from `ready --json` (`feat/<node id>`, `fix/<node id>` and so on) before its first commit, and uses `pr_title` for the pull request, so branches and pull requests read like the roadmap. Fill in `templates/worker-prompt.md`. The prompt names the node, the root, the base branch and the exact context files. It does not paste their contents, so the worker reads the current versions.
 
-Before spawning, check that the base branch already contains what the worker needs: the frozen contracts and the outcomes of its dependencies.
+Before spawning, check that the base branch already contains what the worker needs: the frozen contracts and the outcomes of its dependencies. Agent worktrees start without the gitignored files of the main checkout. Claude Code copies the ones that `.worktreeinclude` names, so when the checks need a file such as `.env`, check that its pattern is listed there.
 
 Check the machine before a wide wave. Each worktree may need its own dependency install and dev server. If memory is tight or the load is high, lower `--max-parallel`. The pr-author skill has a capacity check for this.
 

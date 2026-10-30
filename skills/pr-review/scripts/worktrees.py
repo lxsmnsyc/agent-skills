@@ -12,9 +12,14 @@ Usage:
 Worktrees go to .git/review-worktrees/<name>-base and <name>-head. Prints JSON with
 both paths. The base worktree is at the merge base, which is what the pull
 request was written against. Add --tip to use the current tip of the base branch.
+
+Both worktrees get the gitignored files named in .worktreeinclude (gitignore
+syntax, for example `.env`), copied from the current checkout, the same way
+Claude Code does for the worktrees it creates.
 """
 import argparse
 import json
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -37,10 +42,29 @@ def review_dir():
     return root, common / "review-worktrees"
 
 
-def add(path, ref):
+def copy_included(src, dest):
+    """Copy the gitignored files that .worktreeinclude names (such as .env) from src to a
+    new worktree, as Claude Code does for the worktrees it creates. Returns the paths."""
+    if not (src / ".worktreeinclude").is_file():
+        return []
+    def listed(*flags):
+        out = subprocess.run(["git", "ls-files", "-z", "--others", "--ignored", *flags],
+                             capture_output=True, text=True, cwd=src).stdout
+        return {p for p in out.split("\0") if p and not p.endswith("/")}
+    # Only files that are both named and gitignored, so tracked files are never overwritten.
+    paths = sorted(listed("--exclude-from=.worktreeinclude") & listed("--exclude-standard"))
+    for rel in paths:
+        target = dest / rel
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(src / rel, target)
+    return paths
+
+
+def add(root, path, ref):
     if path.exists():
         git("worktree", "remove", "--force", str(path))
     git("worktree", "add", "--detach", str(path), ref)
+    return copy_included(root, path)
 
 
 def prepare(args):
@@ -57,10 +81,11 @@ def prepare(args):
         name = args.name or head_ref.replace("/", "-")
     base_at = git("rev-parse", base_ref) if args.tip else git("merge-base", base_ref, head_ref)
     paths = {"base": base_dir / f"{name}-base", "head": base_dir / f"{name}-head"}
-    add(paths["base"], base_at)
-    add(paths["head"], head_ref)
+    add(root, paths["base"], base_at)
+    copied = add(root, paths["head"], head_ref)
     print(json.dumps({"name": name, "base": str(paths["base"]), "head": str(paths["head"]),
                       "base_commit": base_at, "head_commit": git("rev-parse", head_ref),
+                      "copied": copied,
                       "cleanup": f"python3 {Path(__file__).resolve()} cleanup {name}"}, indent=2))
 
 

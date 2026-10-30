@@ -69,6 +69,7 @@ python3 skills/goal-debate/scripts/debate.py docs/roadmaps/<slug>/debate status
 
 - `scripts/capacity.py` recommends how many worktrees the machine can take, from free memory, CPU load and disk.
 - `scripts/wt.py` keeps one worktree per branch in `.worktrees/`, hidden from `git status`, and prunes merged ones.
+- `wt.py new` and pr-review's `worktrees.py prepare` copy the gitignored files that `.worktreeinclude` names (such as `.env`), as Claude Code does for its own worktrees.
 - `wt.py prune-merged --agent-worktrees` also sweeps `.claude/worktrees/` left by agents, skipping locked and recently used ones.
 - `scripts/ci_guard.py` reads workflow triggers and repo visibility, and says "ask" when a push to a private repo would start CI.
 - Bugs found on the base branch are proven there and fixed in their own PR, so they ship without waiting for the feature.

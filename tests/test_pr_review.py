@@ -84,6 +84,15 @@ class PrReviewTest(unittest.TestCase):
         self.assertIn("/.git/review-worktrees/", wt["base"])
         self.assertEqual(sh("git status --porcelain", self.repo), "")
 
+    def test_prepare_copies_worktreeinclude_files(self):
+        (self.repo / ".gitignore").write_text(".env\n")
+        (self.repo / ".worktreeinclude").write_text(".env\n")
+        (self.repo / ".env").write_text("SECRET=1\n")
+        wt = self.prepare()
+        self.assertEqual(wt["copied"], [".env"])
+        for side in ("base", "head"):
+            self.assertEqual((Path(wt[side]) / ".env").read_text(), "SECRET=1\n")
+
     def test_checks_detects_scripts(self):
         out = script("checks.py", str(self.repo), "--json", cwd=self.repo)
         found = json.loads(out.stdout)

@@ -38,6 +38,19 @@ class PrAuthorTest(unittest.TestCase):
         second = json.loads(script("wt.py", "new", "fix/b", cwd=self.repo).stdout)
         self.assertEqual(second["index"], 2)
 
+    def test_new_copies_worktreeinclude_files(self):
+        (self.repo / ".gitignore").write_text(".env\n")
+        (self.repo / ".worktreeinclude").write_text(".env\nREADME.md\n")
+        (self.repo / "README.md").write_text("tracked\n")
+        sh("git add -A && git commit -qm setup", self.repo)
+        (self.repo / ".env").write_text("SECRET=1\n")
+        (self.repo / "README.md").write_text("local edit\n")
+        out = json.loads(script("wt.py", "new", "feat/env", cwd=self.repo).stdout)
+        self.assertEqual(out["copied"], [".env"])
+        self.assertEqual((Path(out["path"]) / ".env").read_text(), "SECRET=1\n")
+        # Tracked files keep the branch's content, even when .worktreeinclude names them.
+        self.assertEqual((Path(out["path"]) / "README.md").read_text(), "tracked\n")
+
     def test_prune_merged_keeps_new_branches(self):
         a = json.loads(script("wt.py", "new", "feat/a", cwd=self.repo).stdout)["path"]
         script("wt.py", "new", "fix/b", cwd=self.repo)
