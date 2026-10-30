@@ -57,9 +57,19 @@ CONTRACT_STATUSES = {"draft", "frozen"}
 # ---------------------------------------------------------------------------
 
 def _strip_comment(line):
-    if '"' in line or "'" in line:
-        return line
-    return re.sub(r"(^|\s)#.*$", "", line)
+    """Cut a ` # comment`. As in YAML, `#` starts one only at the line start or after whitespace,
+    and not inside a quoted string. A quote opens only at the start of a token, so the
+    apostrophe in `maintainer's` is plain text."""
+    quote = None
+    for i, c in enumerate(line):
+        if quote:
+            if c == quote:
+                quote = None
+        elif c in "\"'" and (i == 0 or line[i - 1] in " \t[,:"):
+            quote = c
+        elif c == "#" and (i == 0 or line[i - 1] in " \t"):
+            return line[:i]
+    return line
 
 
 def _scalar(s):
@@ -1158,6 +1168,19 @@ def review_setting(root):
     return v if v in REVIEW_MODES else "auto"
 
 
+def setting_warnings(root):
+    """Warnings for GOAL.md settings outside their allowed values, so a typo is not read as the default."""
+    settings, warnings = goal_settings(root), []
+    review = str(settings.get("review") or "auto").strip().lower()
+    if review not in REVIEW_MODES:
+        warnings.append(f"GOAL.md: review '{settings.get('review')}' is not one of "
+                        f"{', '.join(sorted(REVIEW_MODES))}; using auto")
+    run = str(settings.get("run") or "parallel").strip().lower()
+    if run not in ("parallel", "sequential"):
+        warnings.append(f"GOAL.md: run '{settings.get('run')}' is not parallel or sequential; using parallel")
+    return warnings
+
+
 def review_mode(n, setting="auto"):
     """Who reviews a node's pull request: `fresh` (a new agent) or `self` (the worker).
 
@@ -1469,6 +1492,7 @@ def main():
     release = release_settings(args.root)
     errors, warnings = check(nodes, contracts, load_errors, policy, milestones, release,
                              merge_policy(args.root))
+    warnings += setting_warnings(args.root)
     warnings += spend_warnings(spend(nodes, token_budget(args.root)))
     held = release_fence(nodes, milestones, release)
 
