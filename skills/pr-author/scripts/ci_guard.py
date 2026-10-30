@@ -12,6 +12,9 @@ Prints JSON: visibility, the workflows that would run, and a verdict:
   safe   no workflow would run, or the repo is public
   ask    private repo, and a push or pull request would start workflows
 Exit code 0 for safe, 2 for ask.
+
+Each pull_request workflow also says whether it skips draft pull requests
+(skips_drafts). A draft only saves CI runs when its workflows skip drafts.
 """
 import argparse
 import json
@@ -39,7 +42,10 @@ def triggered_workflows(root):
         triggers = set(re.findall(r"\b(push|pull_request|pull_request_target)\b",
                                   (inline.group(1) if inline else "") + on))
         if triggers:
-            found.append({"file": str(f.relative_to(root)), "triggers": sorted(triggers)})
+            entry = {"file": str(f.relative_to(root)), "triggers": sorted(triggers)}
+            if triggers & {"pull_request", "pull_request_target"}:
+                entry["skips_drafts"] = "pull_request.draft" in text
+            found.append(entry)
     return found
 
 
@@ -52,6 +58,9 @@ def main():
     workflows = triggered_workflows(args.root)
     ask = bool(workflows) and vis in ("private", "internal", "unknown")
     out = {"visibility": vis, "workflows": workflows, "verdict": "ask" if ask else "safe"}
+    on_drafts = [w["file"] for w in workflows if w.get("skips_drafts") is False]
+    if on_drafts:
+        out["runs_on_drafts"] = on_drafts
     if ask:
         out["advice"] = ("Pushing would start billed CI runs. Ask the user before pushing. "
                          "Run the checks locally instead, and keep the branch local until they decide.")

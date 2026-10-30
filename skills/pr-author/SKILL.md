@@ -1,6 +1,6 @@
 ---
 name: pr-author
-description: Write code changes as small, independent pull requests that can merge at any time. Uses git worktrees when the machine has room, splits any bug found on the base branch into its own fix PR so it ships without waiting, keeps PRs non-blocking (flags, expand and contract, owned paths), runs the project's checks locally, self-reviews with a fresh agent running the pr-review skill, and hands the PR to the maintainer. Use this skill whenever the user asks to implement a feature or fix and open a PR, work on several branches at once, split work into PRs, or when a roadmap worker from the parallel-roadmap skill builds a node, even if they do not say "pull request".
+description: Write code changes as small, independent pull requests that can merge at any time. Uses git worktrees when the machine has room, splits any bug found on the base branch into its own fix PR so it ships without waiting, keeps PRs non-blocking (flags, expand and contract, owned paths), runs the project's checks locally, self-reviews with a fresh agent running the pr-review skill, opens the PR as a draft until the review is clean so review fixes do not start CI, and hands the PR to the maintainer. Use this skill whenever the user asks to implement a feature or fix and open a PR, work on several branches at once, split work into PRs, or when a roadmap worker from the parallel-roadmap skill builds a node, even if they do not say "pull request".
 ---
 
 # PR author
@@ -100,11 +100,12 @@ Run at most two review rounds. If blocking findings remain after the second, sto
 
 ### 7. Open the pull request
 
-1. Run `ci_guard.py`. On a private repo where a push would start workflows, ask the user before pushing: CI minutes there are billed. Until they say yes, keep the branch local and report the local checks.
+1. Run `ci_guard.py`. On a private repo where a push would start workflows, ask the user before pushing: CI minutes there are billed. Until they say yes, keep the branch local and report the local checks. A draft saves CI runs only when the workflows skip drafts. When `runs_on_drafts` lists workflows, tell the user once, and suggest adding `if: ${{ !github.event.pull_request.draft }}` to their jobs and `ready_for_review` to their `pull_request` types (repo-setup's `check.yml` has both). Do not edit the workflows in this PR.
 2. Rebase onto the latest base, and rerun the checks if the base moved.
 3. Write the description from `references/pr-body.md`: what and why, changes, proof (the failing test on the base and passing on the branch, for fixes), roadmap node, cost, risk, and anything not done.
-4. `git push -u origin <branch>` and `gh pr create --base <base> --body-file <file>`. Do not merge it.
-5. If the PR is a roadmap node and the roadmap's merge policy is `auto`, the orchestrator decides with `plan.py can-merge` and may merge it without the user (parallel-roadmap, "Auto-merge"). Otherwise, hand it to the maintainer as pr-review describes: if the user is the maintainer, give them the link, the evidence and `gh pr review <n> --approve`. Otherwise post a short comment that it is ready for maintainer approval and mention them.
+4. `git push -u origin <branch>` and `gh pr create --draft --base <base> --body-file <file>`. Do not merge it.
+5. Keep it a draft until the review is clean: no blocking and no should-fix findings left. A fresh review that runs after the PR is open (a roadmap worker's "fresh review needed") usually takes two or three rounds of fixes. Each push to a ready PR starts CI again. When the review is clean and the local checks pass on the final commit, run `gh pr ready <n>`. When the review was already clean before the PR was opened, mark it ready right away. If the review stops with blocking findings left after two rounds, leave it a draft and say why.
+6. If the PR is a roadmap node and the roadmap's merge policy is `auto`, the orchestrator decides with `plan.py can-merge` and may merge it without the user (parallel-roadmap, "Auto-merge"). Otherwise, hand it to the maintainer as pr-review describes: if the user is the maintainer, give them the link, the evidence and `gh pr review <n> --approve`. Otherwise post a short comment that it is ready for maintainer approval and mention them.
 
 Write all PR text by the plain-writing rules if that skill is installed.
 
@@ -128,8 +129,8 @@ GitHub moves stacked PRs onto the next base when their base branch is deleted af
 ## What the user sees
 
 ```
-Opened #57 fix: subtotal skipped the first item -> main (ready for your approval: gh pr review 57 --approve)
-Opened #58 feat: sales tax on the subtotal -> main (independent of #57)
+Opened #57 fix: subtotal skipped the first item -> main (draft until review was clean, now ready: gh pr review 57 --approve)
+Opened #58 feat: sales tax on the subtotal -> main (independent of #57, marked ready after review)
 Proof (#57): src/cart.test.js fails on main, passes on fix/subtotal-first-item
 Checks: lint, build, tests pass locally on both branches
 Self-review: 1 round, 0 blocking, 1 nit fixed, 1 nit left (listed in #58)

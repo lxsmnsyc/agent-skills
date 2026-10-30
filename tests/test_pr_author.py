@@ -98,6 +98,16 @@ class PrAuthorTest(unittest.TestCase):
         self.assertEqual(json.loads(private.stdout)["verdict"], "ask")
         public = script("ci_guard.py", "--visibility", "public", cwd=self.repo)
         self.assertEqual(json.loads(public.stdout)["verdict"], "safe")
+        self.assertEqual(json.loads(public.stdout)["runs_on_drafts"], [".github/workflows/ci.yml"])
+
+    def test_ci_guard_sees_draft_skip(self):
+        wf = self.repo / ".github" / "workflows"
+        wf.mkdir(parents=True)
+        (wf / "ci.yml").write_text("name: ci\non:\n  pull_request:\njobs:\n  check:\n"
+                                   "    if: ${{ !github.event.pull_request.draft }}\n")
+        out = json.loads(script("ci_guard.py", "--visibility", "public", cwd=self.repo).stdout)
+        self.assertTrue(out["workflows"][0]["skips_drafts"])
+        self.assertNotIn("runs_on_drafts", out)
 
     def test_ci_guard_without_workflows_is_safe(self):
         out = script("ci_guard.py", "--visibility", "private", cwd=self.repo)
