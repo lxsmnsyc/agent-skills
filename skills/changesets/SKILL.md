@@ -15,7 +15,7 @@ A branch often adds something and then corrects it a few commits later. Nobody r
 
 The test is one question: did the behavior being fixed ever reach a release? A fix for something users have today, or anything the release branch does not have at all, gets a changeset.
 
-Changes users never see get none: tests, internal tooling, CI, docs that do not ship with the package. When unsure, ask whether the entry would mean anything to someone reading the changelog.
+Changes users never see get none: tests, internal tooling, CI, docs that do not ship with the package. That includes everything under `docs/` (roadmaps, debates, proposals, decisions). When unsure, ask whether the entry would mean anything to someone reading the changelog.
 
 ## The bump level
 

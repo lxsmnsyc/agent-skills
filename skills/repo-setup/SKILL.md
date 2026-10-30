@@ -18,12 +18,15 @@ Use this skill only on repos the user owns (`gh repo view --json owner`). Repos 
 - **Lint and format**: oxlint extending `@lxsmnsyc/oxlint-config`, and oxfmt.
 - **License**: MIT.
 - **Workflows**: `check.yml` (lint, format, types and tests on pull requests and on `main`) and `release.yml` (changesets, publishing to npm with trusted publishing).
+  - Draft pull requests skip the check until they are marked ready, so review fixes do not use CI minutes.
+  - A new push cancels the older run of the same pull request (`concurrency` with `cancel-in-progress` on pull requests only). Runs on `main` are never cancelled.
+  - Changes only under `docs/**` skip both workflows. Roadmaps, debates, proposals and decisions are not build inputs and carry no changesets. The website's docs live in `website/` and stay covered.
 - **Folders**:
   - `packages/` for the published packages
   - `examples/` for examples
   - `benchmarks/` for measurements
-  - `docs/` for markdown files and the general documentation
-  - `website/`, only when the project needs a website. It is the central place for documentation, with `docs/` as its source. Build it with brumate or Solid 2.0, and deploy it on Vercel.
+  - `docs/` for roadmaps, debates, proposals and decisions. Nothing in it is a build input.
+  - `website/`, only when the project needs a website. It is the central place for user documentation, and that documentation lives in `website/`. Build it with brumate or Solid 2.0, and deploy it on Vercel.
 
 ## Templates
 

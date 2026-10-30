@@ -182,6 +182,12 @@ def audit(root, offline=False):
         gaps = [w for w, pat in (("lint", r"oxlint|\blint\b"), ("format", r"oxfmt|format"),
                                  ("types", r"tsc|typecheck"), ("tests", r"\btest\b|vitest"))
                 if not re.search(pat, text)]
+        if "pull_request.draft" not in text:
+            gaps.append("a draft skip")
+        if "docs/**" not in text:
+            gaps.append("a docs/** skip")
+        if "cancel-in-progress" not in text:
+            gaps.append("cancel-in-progress")
         add("check workflow", "migrate" if gaps else "ok",
             ", ".join(check) + (f" lacks {', '.join(gaps)}" if gaps else ""))
     release = [n for n, t in wf.items() if "changeset" in t]
@@ -193,6 +199,8 @@ def audit(root, offline=False):
             add("release workflow", "migrate", "uses an npm token; switch to trusted publishing")
         elif "id-token: write" not in text:
             add("release workflow", "migrate", "no id-token: write")
+        elif "docs/**" not in text:
+            add("release workflow", "migrate", "no docs/** skip")
         else:
             add("release workflow", "ok", ", ".join(release))
         envs = sorted(set(re.findall(r"^\s+environment:\s*(\S+)", text, re.M)))
