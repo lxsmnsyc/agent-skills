@@ -102,6 +102,15 @@ The last command shows whether npm also pointed `latest` at the placeholder. Rep
 - Workflow filename: `release.yml`, the file name only
 - Environment: empty, unless step 4 added environments. Then use the npm publish job's environment name.
 
+Or from the command line, with npm 11.15.0 or later and 2FA on the account:
+
+```bash
+npm trust github <pkg> --file release.yml --repo <owner>/<repo> --allow-publish
+npm trust list <pkg>
+```
+
+Add `--env <name>` when step 4 added environments. `npm trust` ignores workspaces, so name each package. A package holds one trust configuration: to change it, find its ID with `npm trust list` and remove it with `npm trust revoke <pkg> --id <id>` first.
+
 After the first release from CI works, set Publishing access to "Require two-factor authentication and disallow tokens".
 
 **3. Set up GitHub Actions.**
