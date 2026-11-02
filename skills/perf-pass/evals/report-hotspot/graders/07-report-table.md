@@ -4,4 +4,4 @@ focus: trace
 weight: 1
 ---
 
-The response reports the options with their measured numbers and says which were rejected and why.
+The response reports the baseline and final numbers, the principles applied, and any rejected options with their numbers and the reason.

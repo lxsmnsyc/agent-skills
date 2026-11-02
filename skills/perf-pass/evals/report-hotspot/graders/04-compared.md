@@ -4,4 +4,4 @@ focus: trace
 weight: 1
 ---
 
-At least two candidate options were built and measured against the same baseline with the same command.
+The chosen version is measured against the baseline with the same command. Principle-backed changes are not each proven side by side, and any candidate that no principle settles is measured against the same baseline.
