@@ -25,8 +25,10 @@ Round 1:
 3. Write at least one `alternative`: a different way to reach the same goal, cheaper on some axis.
 4. If the plan needs an axis beyond device, time and tokens, add it to `extra_axes` with
    status "proposed" and the reason. At most two.
-5. Add questions for the user only for what you cannot observe or measure: deadlines, budgets,
-   target hardware, priorities between axes, plans not in the repo.
+5. Infer choices (deadlines, target hardware, which axis wins) from the goal and the project
+   files (GOAL.md, README, CLAUDE.md, manifest, CI and deploy config, decision records) and cite
+   them as `inferred` evidence. Add a question for the user only when a choice cannot be
+   inferred and its answer would change the structure.
 
 Later rounds: you get the rulings, new facts and the user's answers. For each upheld cost or risk
 against your proposals, amend the proposal, cut scope, switch to an alternative, or concede with
@@ -61,7 +63,8 @@ Ledger: <dir>/ledger.json (read the format in <skill>/references/ledger.md)
    <dir>/evidence/). Write `cost` and `risk` claims with severity, naming the proposal in `answers`.
 3. Write `rebuttal` claims where the proponent's evidence or estimate is wrong, with your evidence.
 4. Write your own `alternative` where you see a cheaper way to reach the goal.
-5. Add questions for the user only for what you cannot observe or measure.
+5. Infer choices from the goal and the project files, citing them as `inferred` evidence. Add a
+   question for the user only when a choice cannot be inferred and would change the structure.
 
 Rules: every claim cites evidence. A cost you cannot measure, source or estimate with a stated
 basis is not a claim. Severity says how much it would change the decision, not how much you
@@ -91,7 +94,8 @@ The orchestrator rules on every claim. It does not argue, and it does not take t
 - **Prove when cheap.** Order a proof only for a high, open claim that a small build can settle within the cap. Do not order one for something a measurement or a source can settle.
 - **Measure to settle.** When two estimates disagree and a short command can settle it, run it and add a `fact`. Ask the user before anything long or anything that installs.
 - **Severity is about the decision.** Uphold a high cost only when it would change what gets built. A real but small cost is upheld as low.
-- **Weigh against the goal.** A cost is too high only against what the goal is worth to the user. When that trade is unclear (a week saved for twice the tokens), it is a question for the user, not a ruling.
+- **Weigh against the goal.** A cost is too high only against what the goal is worth to the user. Read that worth from the goal and the project first: what the goal names as the point, the constraints in `GOAL.md`, the targets in the manifest. Only when it cannot be read there and the trade would flip the structure is it a question for the user.
+- **Few questions.** At most two user questions per debate. Drop a question whose answers would settle on the same structure, and drop one the project already answers.
 - **Open, not guessed.** When neither side can settle a claim and the user cannot either, rule it `open`. Open claims become spikes or accepted risks.
 - **Concessions need a reason.** A concession that names no claim or evidence is agreement for its own sake. Note it in `ruling_why` of the conceded claim and do not count it.
 - **Repeats are rejected.** A claim that restates a rejected one without new evidence is rejected with "repeat of <id>".
@@ -101,5 +105,6 @@ The orchestrator rules on every claim. It does not argue, and it does not take t
 
 - The opponent concedes everything in round 1. Check whether it measured anything. If not, continue it once and ask for the measurements.
 - The opponent attacks the goal itself ("this should not be built") without an alternative or a cost. That is a question for the user about the goal, not a claim.
-- Both sides argue about something no one can measure. Ask the user, or rule it open.
+- Both sides argue about something no one can measure. Infer it from the goal, rule it open, or, if it decides the structure, ask the user.
+- Questions pile up. Answer them by inference, and keep the two that would change the structure.
 - The claims grow with every round. Cap a side at about eight new claims per round, and keep the round cap.

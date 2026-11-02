@@ -148,13 +148,13 @@ class DebateTest(unittest.TestCase):
         self.write(claims=[proposal("P1", 1), cost("O1", 1, ["P1"], ruling="open")],
                    questions=[{"id": "Q1", "by": "opponent", "ask": "Deadline?"}],
                    proofs=[{"id": "T1", "claim": "O1", "question": "Fits in 8 GB?", "dir": "/tmp/x",
-                            "status": "planned", "cap": {"minutes": 30, "tokens": 100000}}])
+                            "status": "planned", "cap": {"minutes": 30}}])
         self.assertEqual(self.status()["next"], "proof")
 
     def test_proof_checks(self):
         self.write(claims=[proposal("P1", 1)],
                    proofs=[{"id": "T1", "claim": "P1", "question": "q", "dir": "/tmp/x", "status": "done",
-                            "result": "fits", "cap": {"minutes": 90, "tokens": 100000}},
+                            "result": "fits", "cap": {"minutes": 90}},
                            {"id": "T2", "claim": "P9", "question": "q", "dir": "/tmp/y", "status": "planned"}])
         out = json.loads(self.run_debate("check", "--json", check=False).stdout)
         errors, warnings = "\n".join(out["errors"]), "\n".join(out["warnings"])
@@ -199,12 +199,29 @@ class DebateTest(unittest.TestCase):
         self.write(claims=[proposal("P1", 1), alt])
         self.assertIn("user_why", self.run_debate("check", check=False).stdout)
 
-    def test_token_budget_settles(self):
-        self.write(max_tokens=1000, spend=[{"round": 1, "tokens": 1200}],
+    def test_spend_never_settles(self):
+        self.write(max_tokens=1000, spend=[{"round": 1, "tokens": 5000000}],
                    claims=[proposal("P1", 1), cost("O1", 1, ["P1"])])
         out = self.status()
-        self.assertEqual(out["next"], "settle")
-        self.assertIn("token budget", out["why"])
+        self.assertNotEqual(out["next"], "settle")
+        self.assertEqual(out["debate_tokens"], 5000000)
+
+    def test_inferred_choices_need_source_and_are_reported(self):
+        claim = fact("J1", 1)
+        claim["evidence"] = {"type": "inferred"}
+        self.write(claims=[claim, proposal("P1", 1)])
+        self.assertIn("inferred evidence needs a source", self.run_debate("check", check=False).stdout)
+        claim["evidence"] = {"type": "inferred", "source": "README.md", "detail": "offline-first"}
+        self.write(claims=[claim, proposal("P1", 1)])
+        out = self.run_debate("report").stdout
+        self.assertIn("## Inferred choices", out)
+        self.assertIn("- J1: 8 GB RAM (from README.md)", out)
+
+    def test_more_than_two_questions_warns(self):
+        questions = [{"id": f"Q{i}", "by": "opponent", "ask": "?", "answer": "a"} for i in range(1, 4)]
+        self.write(claims=[proposal("P1", 1)], questions=questions)
+        out = json.loads(self.run_debate("check", "--json").stdout)
+        self.assertIn("3 user questions", "\n".join(out["warnings"]))
 
     def test_hypothesis_may_cite_questions(self):
         self.write(claims=[proposal("P1", 1)],

@@ -4,7 +4,7 @@
 The ledger is <dir>/ledger.json. Stdlib only.
 
 Usage:
-  debate.py <dir> init --goal "..." [--max-rounds 3] [--max-tokens N] [--research]
+  debate.py <dir> init --goal "..." [--max-rounds 3] [--research]
                        [--roadmap <root>] [--supersedes <earlier debate dir>]   # write an empty ledger
   debate.py <dir> check                               # validation only, exit 1 on errors
   debate.py <dir> status                              # rulings, open questions, next step (default)
@@ -35,9 +35,12 @@ NEEDS_ANSWERS = {"rebuttal", "concession"}
 SEVERITIES = {"low", "medium", "high"}
 # measured: command output on this machine or repo. calibration: past estimate against actual.
 # source: a file, doc or price list. prior-art: a paper, a public repo, or the lab's own past
-# debate or experiment. user: an answered question. estimate: a reasoned guess.
-EVIDENCE = {"measured", "calibration", "source", "prior-art", "user", "estimate"}
-NEEDS_SOURCE = {"measured", "calibration", "source", "prior-art"}
+# debate or experiment. user: an answered question. inferred: a choice read from the goal or
+# the project files. estimate: a reasoned guess.
+EVIDENCE = {"measured", "calibration", "source", "prior-art", "user", "inferred", "estimate"}
+NEEDS_SOURCE = {"measured", "calibration", "source", "prior-art", "inferred"}
+# Choices are inferred from the goal and the project first; the user gets only what cannot be.
+MAX_QUESTIONS = 2
 RULINGS = {None, "upheld", "rejected", "open"}
 STANDING = {"upheld", "open"}
 AXIS_STATUSES = {"proposed", "accepted", "rejected"}
@@ -45,11 +48,11 @@ AXIS_STATUSES = {"proposed", "accepted", "rejected"}
 PROOF_STATUSES = {"planned", "running", "done", "abandoned"}
 PROOF_PENDING = {"planned", "running"}
 MAX_PROOFS = 2
-PROOF_CAP = {"minutes": 30, "tokens": 100000}
+# A proof is capped in time only, like the debate is capped in rounds. Token spend is recorded, not limited.
+PROOF_CAP_MINUTES = 30
 HYPOTHESIS_FIELDS = ("statement", "metric", "baseline", "threshold", "kill")
 # Fields the judge or the user may still change after a round is sealed.
 RULING_FIELDS = {"ruling", "ruling_why", "user_ruling", "user_why"}
-SPEND_WARN = 0.8
 
 
 def ledger_path(root):
@@ -233,14 +236,14 @@ def check(ledger, root=None):
                 and isinstance(evidence, dict) and evidence.get("type") == "estimate"):
             warnings.append(f"{cid}: a high {kind} upheld on an estimate alone; measure it or plan a spike")
 
+    if len(question_ids) > MAX_QUESTIONS:
+        warnings.append(f"{len(question_ids)} user questions; keep at most {MAX_QUESTIONS} that would change "
+                        f"the structure and answer the rest with `inferred` facts")
     check_proofs(ledger, ids, question_ids, errors, warnings)
     check_hypothesis(ledger, ids, question_ids, errors)
     check_cuts(ledger, ids, root, errors, warnings)
     check_sealed(ids, root, errors)
     check_links(ledger, root, warnings)
-    budget = ledger.get("max_tokens")
-    if budget and debate_tokens(ledger) >= budget * SPEND_WARN:
-        warnings.append(f"the debate has spent {debate_tokens(ledger)} of its {budget} token budget")
     return errors, warnings
 
 
@@ -350,13 +353,11 @@ def check_proofs(ledger, ids, question_ids, errors, warnings):
         if proof.get("status") not in PROOF_STATUSES:
             errors.append(f"{pid}: status must be one of {sorted(PROOF_STATUSES)}")
         cap = proof.get("cap")
-        if not isinstance(cap, dict) or not cap.get("minutes") or not cap.get("tokens"):
-            errors.append(f"{pid}: set cap.minutes and cap.tokens before it starts")
-        else:
-            for key, limit in PROOF_CAP.items():
-                if cap[key] > limit:
-                    warnings.append(f"{pid}: cap of {cap[key]} {key} is over the default {limit}; "
-                                    f"the user should agree to it")
+        if not isinstance(cap, dict) or not cap.get("minutes"):
+            errors.append(f"{pid}: set cap.minutes before it starts")
+        elif cap["minutes"] > PROOF_CAP_MINUTES:
+            warnings.append(f"{pid}: cap of {cap['minutes']} minutes is over the default {PROOF_CAP_MINUTES}; "
+                            f"the user should agree to it")
         if proof.get("status") == "done":
             fid = proof.get("fact")
             fact = ids.get(fid)
@@ -436,8 +437,6 @@ def status(ledger, errors, root=None):
         step, why = "proof", f"finish {', '.join(pending_proofs)} within its cap, then add the result as a fact"
     elif unanswered:
         step, why = "ask-user", f"answer {', '.join(unanswered)} before the next round"
-    elif ledger.get("max_tokens") and debate_tokens(ledger) >= ledger["max_tokens"]:
-        step, why = "settle", f"the debate's token budget of {ledger['max_tokens']} is spent"
     elif (converged(ledger) or rnd >= max_rounds) and ledger.get("research") and not ledger.get("hypothesis"):
         step, why = "judge", "write the hypothesis (metric, baseline, threshold, kill) before settling"
     elif converged(ledger):
@@ -464,7 +463,6 @@ def status(ledger, errors, root=None):
         "next": step,
         "why": why,
         "debate_tokens": debate_tokens(ledger),
-        "max_tokens": ledger.get("max_tokens"),
     }
 
 
@@ -580,8 +578,9 @@ def report(ledger):
         for proof in proofs:
             cap = proof.get("cap") or {}
             lines.append(f"- {proof.get('id')} for {proof.get('claim')}: {proof.get('question')} "
-                         f"({proof.get('status')}, cap {cap.get('minutes')} min, {cap.get('tokens')} tokens). "
-                         f"Result: {proof.get('result') or 'none yet'}")
+                         f"({proof.get('status')}, cap {cap.get('minutes')} min"
+                         + (f", spent {proof['tokens']} tokens" if proof.get("tokens") else "") + "). "
+                         + f"Result: {proof.get('result') or 'none yet'}")
         lines.append("")
 
     lines += ["## Overruled", ""]
@@ -593,6 +592,15 @@ def report(ledger):
     lines += overruled or ["- (none)"]
     lines.append("")
 
+    lines += ["## Inferred choices", ""]
+    inferred = []
+    for claim in claims:
+        evidence = claim.get("evidence")
+        if isinstance(evidence, dict) and evidence.get("type") == "inferred":
+            inferred.append(f"- {claim['id']}: {claim.get('text', '')} (from {evidence.get('source', '')})")
+    lines += inferred or ["- (none)"]
+    lines.append("")
+
     lines += ["## Answers from the user", ""]
     answers = []
     for q in ledger.get("questions", []):
@@ -602,9 +610,8 @@ def report(ledger):
     lines.append("")
 
     tokens = debate_tokens(ledger)
-    lines += ["## Debate cost", "", f"- {last_round(ledger)} rounds"
-              + (f", about {tokens} tokens" if tokens else "")
-              + (f" of a {ledger['max_tokens']} budget" if ledger.get("max_tokens") else "")]
+    lines += ["## Debate cost", "", f"- {last_round(ledger)} of {ledger.get('max_rounds', DEFAULT_MAX_ROUNDS)} rounds"
+              + (f", about {tokens} tokens" if tokens else "")]
     if ledger.get("supersedes"):
         lines.append(f"- supersedes {ledger['supersedes']}")
     return "\n".join(lines) + "\n"
@@ -625,8 +632,6 @@ def main():
     ap.add_argument("command", nargs="?", default="status", choices=["init", "check", "status", "seal", "report"])
     ap.add_argument("--goal", default="")
     ap.add_argument("--max-rounds", type=int, default=DEFAULT_MAX_ROUNDS)
-    ap.add_argument("--max-tokens", type=int, default=None,
-                    help="init: the debate's own token budget; status says settle once it is spent")
     ap.add_argument("--roadmap", default=None, help="init: an existing roadmap the debate weighs and may cut")
     ap.add_argument("--supersedes", default=None, help="init: the earlier debate this one replaces")
     ap.add_argument("--research", action="store_true",
@@ -642,7 +647,7 @@ def main():
             sys.exit("init needs --goal")
         args.root.mkdir(parents=True, exist_ok=True)
         ledger = {"goal": args.goal, "research": args.research, "max_rounds": args.max_rounds,
-                  "max_tokens": args.max_tokens, "roadmap": args.roadmap, "supersedes": args.supersedes,
+                  "roadmap": args.roadmap, "supersedes": args.supersedes,
                   "extra_axes": [], "claims": [], "questions": [], "proofs": [], "hypothesis": None,
                   "spend": []}
         path.write_text(json.dumps(ledger, indent=2) + "\n")

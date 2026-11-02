@@ -37,7 +37,7 @@ Use `roadmaps/` instead of `docs/roadmaps/` when the repo has no `docs/` folder,
 `scripts/debate.py` is the source of truth for the ledger. Ask it what comes next. Do not decide by rereading the claims.
 
 ```bash
-python3 <skill>/scripts/debate.py <dir> init --goal "<one sentence>" [--max-rounds 3] [--max-tokens N]
+python3 <skill>/scripts/debate.py <dir> init --goal "<one sentence>" [--max-rounds 3]
     [--research] [--roadmap <root>] [--supersedes <earlier debate dir>]
 python3 <skill>/scripts/debate.py <dir> check     # validate the ledger, exit 1 on errors
 python3 <skill>/scripts/debate.py <dir> status    # rulings, open questions, and the next step
@@ -49,12 +49,12 @@ python3 <skill>/scripts/debate.py <dir> report    # Markdown summary to build de
 
 ## Scale
 
-The debate costs tokens, which is one of the things it weighs. Match its size to the goal:
+The round cap is the debate's only limit, and it sets how long the debate takes. Token spend is not capped. The debate spends what it needs within its rounds, and `spend` records it so the cost stays visible. Match the rounds to the goal:
 
-- **Short**, for a goal of a few pull requests or one that can be undone cheaply: one round. The orchestrator writes the proponent and opponent claims itself, rules on them, and asks the user what it could not measure. No subagents.
-- **Full**: two subagents and up to `max_rounds` rounds (default 3). Use it when the goal takes weeks, adds infrastructure, a model, a service or a heavy dependency, or needs many agents. Also use it when the user asks for a debate.
+- **Short**, for a goal of a few pull requests or one that can be undone cheaply: one round (`--max-rounds 1`). The orchestrator writes the proponent and opponent claims itself and rules on them. No subagents.
+- **Full**: two subagents and up to `max_rounds` rounds (default 3). Use it when the goal takes weeks, adds infrastructure, a model, a service or a heavy dependency, or needs many agents. Also use it when the user asks for a debate. Raise the cap only when the user gives the debate more time.
 
-Give a full debate a token budget with `--max-tokens` (about 300k is a reasonable start for three rounds). `status` says `settle` once the recorded `spend` reaches it. Say which one you picked and why. If a short debate turns up a high cost that both sides could argue either way, move up to a full one.
+Say which one you picked and why. If a short debate turns up a high cost that both sides could argue either way, move up to a full one.
 
 ## Steps
 
@@ -92,7 +92,8 @@ The orchestrator rules. It does not argue and does not add proposals.
 2. Rule on each claim: `upheld` (it stands and shapes the result), `rejected` (with `ruling_why`), or `open` (it could matter and no one can settle it now, with `ruling_why`).
 3. Settle disputes that a measurement can settle by measuring, and add the result as a `fact`. Two estimates that disagree are a reason to measure, not to pick one.
 4. Order a proof when a claim is high severity, ruled `open`, and cheap to test with a small throwaway build, for example "the 4-bit model fits in 8 GB" or "the parser handles the 2 GB file". See "Proofs" below.
-5. Filter the questions. A question the repo, the machine, the docs or a quick command can answer is not for the user. The judge answers it with a `fact`. Send the rest to the user with AskUserQuestion, at most four per round. Each one stands on its own and names the claims it blocks. Typical questions: deadlines, spend limits, target hardware, which axis wins when two trade off, and plans the repo does not show.
+5. Infer before asking. Most choices follow from the goal and from what the project already says: `GOAL.md` and its constraints, the README, `CLAUDE.md`, decision records, past `debate.md` files, the manifest (engines, browser targets, dependencies), CI config, deploy config, and git history. Which axis wins in a trade follows from the goal (an on-device goal puts device first, and a deadline in the goal puts time first). Record each inferred choice as a `fact` with `inferred` evidence that names the file or the goal text it comes from. A question the repo, the machine, the docs or a quick command can answer is not for the user either. The judge answers it with a measured `fact`.
+   Ask the user only when a choice cannot be inferred and the two answers would settle on different structures. At most two questions in the whole debate, asked together with AskUserQuestion. Each one stands on its own, names the claims it blocks, and offers the inferred answer as the first option when there is one. When a choice is unclear but does not change the structure, infer it and move on.
 6. Record the answers in the ledger and run `debate.py status`. When it says `seal`, run `debate.py seal`. From then on `check` fails if a side edits a claim of a finished round, so the record cannot be rewritten. A side that changes its mind writes a new claim. Rulings stay editable, so the judge can re-rule after a proof.
 
 How to weigh claims is in `references/roles.md` under "Judging". In short: measured beats calibrated, calibrated beats sourced, and a guess never outweighs a measurement. A high cost upheld on an estimate alone becomes a spike or a measurement, not a verdict.
@@ -101,7 +102,7 @@ How to weigh claims is in `references/roles.md` under "Judging". In short: measu
 
 A proof answers one feasibility question with a small build that is thrown away afterwards. It is not the start of the project.
 
-- Add it to `proofs` in the ledger with the claim it settles, the question, the scratch directory and a cap set before it starts. The default cap is 30 minutes and 100k tokens per proof, and at most 2 proofs per debate. A larger cap needs the user's agreement.
+- Add it to `proofs` in the ledger with the claim it settles, the question, the scratch directory and a time cap set before it starts. The default cap is 30 minutes per proof, and at most 2 proofs per debate. A larger cap needs the user's agreement. Tokens are recorded in the proof's `tokens` field, not capped.
 - Run it in a scratch directory outside the repo, by one subagent or by the judge itself. It may install packages there and download small models or datasets. Ask the user before downloads over about 1 GB.
 - Stop at the cap. A proof that hits its cap is `abandoned`, and that result is itself evidence: "did not fit in 30 minutes".
 - Record the result as a `measured` fact citing the proof id, then re-rule the claim.
@@ -117,9 +118,9 @@ A side that concedes names the claim or evidence that changed its mind. A conces
 The debate settles when `status` says `settle`. That happens when a round adds nothing that stands, or when the round cap is reached. Then:
 
 1. For a research debate, the judge writes the `hypothesis` in the ledger: the statement, the metric, the baseline, the success threshold and the kill criteria. It takes them from the upheld claims and the user's answers. This fixes what counts as success before anyone sees a result.
-2. Run `debate.py report` and write `debate.md` from `templates/debate.md`: the hypothesis, the settled structure, the budget on each axis, the rejected alternatives with the claims that beat them, the proofs, the open risks, and the user's answers.
+2. Run `debate.py report` and write `debate.md` from `templates/debate.md`: the hypothesis, the settled structure, the budget on each axis, the rejected alternatives with the claims that beat them, the proofs, the open risks, the inferred choices, and the user's answers.
 3. Turn each open risk into a spike, a measurement or an accepted risk with a reason.
-4. Show the user `debate.md` and get their approval. They may overrule any ruling. Record that as `user_ruling` and `user_why` on the claim. The judge's ruling stays, and `report` lists both under "Overruled".
+4. Show the user `debate.md` and get their approval. Approval is where the user corrects an inferred choice, so the inferred choices are listed there. They may overrule any ruling. Record that as `user_ruling` and `user_why` on the claim. The judge's ruling stays, and `report` lists both under "Overruled".
 
 Never move on to planning or building without that approval.
 
@@ -152,8 +153,8 @@ A roadmap can grow faster than it ships: many outline nodes, a must line that ke
 
 - Every claim has evidence, and the evidence names its source. An argument without evidence is not a claim.
 - The two sides argue and the judge rules. In a full debate the judge never takes a side's role, and a side never rules.
-- Ask the user only what cannot be observed or measured, and ask it once.
-- The debate stops at the round cap. Open claims at the cap become open risks.
+- Infer choices from the goal and the project. Ask the user only what cannot be inferred, observed or measured and would change the structure: at most two questions per debate, asked once.
+- The debate stops at the round cap, its only limit. Open claims at the cap become open risks.
 - Nothing gets built in the repo during a debate. Proofs and measurements write only under `evidence/` or a scratch directory, and proofs stay within their caps.
 - A research debate fixes the hypothesis, metric and threshold before any run. Changing them after a result needs a new debate.
 - A threshold on timing or size counts only beyond the noise (perf-pass's `bench.py`). A threshold on a count, such as spec examples passed, is exact.

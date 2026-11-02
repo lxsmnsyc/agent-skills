@@ -4,4 +4,4 @@ focus: trace
 weight: 1
 ---
 
-The debate is given a token budget near 300k (max_tokens) after the user's answer, and stops within it or at the round cap.
+The debate is limited by its round cap (max_rounds) only: it sets no token budget for itself, records its spend, and stops by convergence or at the round cap.

@@ -43,7 +43,7 @@ Roadmap debates only.
 
 ## Proofs
 
-- <T id> for <claim id>: <question>. <done | abandoned>, <result> (cap <minutes> min, <tokens> tokens)
+- <T id> for <claim id>: <question>. <done | abandoned>, <result> (cap <minutes> min, spent <tokens> tokens)
 
 ## Prior art
 
@@ -52,6 +52,10 @@ Roadmap debates only.
 ## Open risks
 
 - <risk> (<claim id>): <spike | measurement | accepted, because ...>
+
+## Inferred choices
+
+- <choice> (<fact id>): from <file or goal text>
 
 ## Answers from the user
 
@@ -63,4 +67,4 @@ Roadmap debates only.
 
 ## Cost of this debate
 
-- <rounds>, about <tokens> tokens
+- <rounds> of <max_rounds> rounds, about <tokens> tokens

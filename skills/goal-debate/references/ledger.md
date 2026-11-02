@@ -41,7 +41,7 @@
   ],
   "proofs": [
     {"id": "T1", "claim": "P1", "question": "Does the 4-bit model caption a photo within 4 GB peak RAM?",
-     "dir": "/tmp/goal-debate/caption-proof", "cap": {"minutes": 30, "tokens": 100000},
+     "dir": "/tmp/goal-debate/caption-proof", "cap": {"minutes": 30},
      "status": "done", "result": "3.4 GB peak, 6.1 s per photo on 20 photos", "fact": "J2"}
   ],
   "research": false,
@@ -90,6 +90,7 @@ Evidence types, strongest first:
 - `source`: a file, doc, model card or price list.
 - `prior-art`: a paper, a public repo, or the lab's own past debate or experiment. `source` is the citation or path, and `detail` says what it found, including negative results.
 - `user`: an answered question. Set `question` to its id.
+- `inferred`: a choice read from the goal or the project (GOAL.md, README, manifest, CI config, decision records). `source` names the file or quotes the goal; `detail` says what was inferred. Ranks with `source`. The user corrects it at approval.
 - `estimate`: a reasoned guess. Allowed, but weakest.
 
 ## Questions
@@ -104,7 +105,8 @@ Evidence types, strongest first:
 | `claim` | The one claim it settles. |
 | `question` | What it answers, as a yes or no or a number. |
 | `dir` | Scratch directory outside the repo. |
-| `cap` | `{"minutes", "tokens"}`, set before it starts. Defaults 30 and 100000. |
+| `cap` | `{"minutes"}`, set before it starts. Default 30. |
+| `tokens` | Tokens it took, recorded after. Not capped. |
 | `status` | `planned`, `running`, `done` or `abandoned`. |
 | `result` | What it found, or why it was abandoned. |
 | `fact` | The judge's `fact` claim that records the result, for `done`. |
@@ -128,7 +130,7 @@ Required before a research debate (`"research": true`) can settle. All fields ar
 
 ## Top-level fields
 
-- `max_tokens`: the debate's own token budget. `status` says `settle` once `spend` reaches it.
+- `max_rounds`: the round cap, the debate's only limit. It sets how long the debate takes.
 - `roadmap`: path of an existing roadmap the debate weighs. Needed for `cut` claims.
 - `supersedes`: folder of the earlier debate this one reruns.
 
@@ -138,4 +140,4 @@ Required before a research debate (`"research": true`) can settle. All fields ar
 
 ## Spend
 
-Optional. One entry per round with the tokens it took, read from the agents' usage reports. `status` adds them up so the debate's own cost stays visible.
+Optional. One entry per round with the tokens it took, read from the agents' usage reports. `status` adds them up so the debate's own cost stays visible. Spend is never a reason to settle.
