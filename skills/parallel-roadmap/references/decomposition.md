@@ -138,4 +138,4 @@ Do not split when the file is only shared within this roadmap and briefly, when 
 
 ## Choosing the model
 
-`plan.py` suggests a model per node: S and M use `sonnet`; L and spikes use `opus`. Override with `model:` in the brief when the work needs it, for example an S node that edits subtle concurrency code. Wide waves of S nodes on a cheaper model cut cost a lot without hurting quality, because S nodes are well specified by definition.
+`plan.py` suggests a model per node: S and M use `sonnet`; L, spikes, experiments and `docs` nodes use `opus`. Docs nodes use `opus` at every size, because `sonnet` drafts failed review. Override with `model:` in the brief when the work needs it, for example an S node that edits subtle concurrency code. Wide waves of S nodes on a cheaper model cut cost a lot without hurting quality, because S nodes are well specified by definition.

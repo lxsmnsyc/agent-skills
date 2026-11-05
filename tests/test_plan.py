@@ -390,6 +390,19 @@ class PlanTest(unittest.TestCase):
         self.assertEqual(plan.branch_name(nodes["subtotal"]), "fix/subtotal")
         self.assertEqual(plan.branch_name(nodes["probe"]), "spike/probe")
 
+    def test_model_follows_size_type_and_override(self):
+        node(self.root, "small", size="S", owns="[a/**]", type="feature")
+        node(self.root, "big", size="L", owns="[b/**]", type="feature")
+        node(self.root, "guide", size="S", owns="[c/**]", type="docs")
+        node(self.root, "probe", size="S", owns="[d/**]", spike="true")
+        node(self.root, "pinned", size="S", owns="[e/**]", type="docs", model="haiku")
+        nodes, _, _ = self.load()
+        self.assertEqual(plan.model_for(nodes["small"]), "sonnet")
+        self.assertEqual(plan.model_for(nodes["big"]), "opus")
+        self.assertEqual(plan.model_for(nodes["guide"]), "opus")
+        self.assertEqual(plan.model_for(nodes["probe"]), "opus")
+        self.assertEqual(plan.model_for(nodes["pinned"]), "haiku")
+
     def test_large_plan_of_sized_nodes_does_not_warn(self):
         for i in range(30):
             node(self.root, f"n{i}", size="M", owns=f"[src/n{i}/**]")

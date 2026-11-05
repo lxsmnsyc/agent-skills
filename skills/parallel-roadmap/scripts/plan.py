@@ -36,6 +36,8 @@ from pathlib import Path
 
 SIZE_POINTS = {"S": 1, "M": 2, "L": 3, "XL": 5}
 DEFAULT_MODEL = {"S": "sonnet", "M": "sonnet", "L": "opus", "XL": "opus"}
+# Node types that use opus at every size. Sonnet docs drafts failed review.
+OPUS_TYPES = {"experiment", "docs"}
 KINDS = {"contract", "behavior", "hard"}
 STATUSES = {"todo", "active", "done", "released", "dropped"}
 DONE = {"done", "released"}
@@ -1391,7 +1393,7 @@ def context_files(root, nid, nodes, contracts):
 def model_for(n):
     if n["model"]:
         return n["model"]
-    if n["spike"] or n["type"] == "experiment":
+    if n["spike"] or n["type"] in OPUS_TYPES:
         return "opus"
     return DEFAULT_MODEL.get(n["size"], "sonnet")
 
