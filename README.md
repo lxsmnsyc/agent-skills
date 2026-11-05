@@ -10,7 +10,7 @@ Skills for Claude Code and other agents that support the Agent Skills format.
 - [`pr-review`](skills/pr-review/SKILL.md): review a pull request or branch with evidence. Fixes are reproduced on the base and proven on the head, features are checked against the roadmap, checks run locally, and approval goes to the maintainer.
 - [`perf-pass`](skills/perf-pass/SKILL.md): profile a finished feature, try several optimizations side by side, and keep the one with the best measured gain for its cost. Runtime for libraries and servers, bundle size for web apps.
 - [`changesets`](skills/changesets/SKILL.md): write the changeset for a change. The bump level follows whether the thing existed before; `major` only with the maintainer's approval.
-- [`repo-setup`](skills/repo-setup/SKILL.md): set up a new or old npm library repo: pnpm, changesets, tsdown, vitest, oxlint and oxfmt. Adds a check workflow and a release workflow with trusted publishing.
+- [`repo-setup`](skills/repo-setup/SKILL.md): set up a new or old npm library repo: pnpm, changesets, tsdown, vitest, oxlint and oxfmt. Adds a check workflow and a release workflow with trusted publishing. Decides where property, model or oracle tests pay off, and finds implicit state machines.
 - [`security-fix`](skills/security-fix/SKILL.md): fix a vulnerability on a branch that is never pushed. The fix goes public when CI publishes the release, so npm provenance stays.
 - [`ts-style`](skills/ts-style/SKILL.md): style rules for `.ts` and `.js` code. for-of loops instead of callback Array methods, function declarations, and the repo's linter after each edit.
 - [`plain-writing`](skills/plain-writing/SKILL.md): rules for short, exact prose that people and agents can both scan, with a checker script and an optional hook for commits and PRs.
@@ -100,6 +100,9 @@ One setup for every npm library repo the user owns, taken from their newest repo
 - `scripts/audit.py` lists what a repo has and lacks (`ok`, `missing`, `migrate`), and which packages are not on npm yet
 - `templates/` holds the workflows, configs and license to copy; tool versions are read from npm at setup time
 - new packages get a manual `0.0.0-stage` publish with `--otp`, then trusted publishing on npmjs.com, then `0.1.0` from CI
+- `references/testing.md` says which modules need property, model or oracle tests with fast-check, and which need none
+- `scripts/scan_states.py` lists flags and status strings that form an implicit state machine, and whether a database stores them
+- `references/state-machines.md` says when to fix one in place and when a migration needs the user's approval
 - GitHub environments only when a release has more than one target, such as npm and the VS Code marketplace
 - old repos get one setup pull request through pr-author, and nothing is pushed to a private repo without asking
 

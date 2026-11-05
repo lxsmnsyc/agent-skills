@@ -16,6 +16,12 @@ def audit(root):
     return r.returncode, {f["check"]: f for f in json.loads(r.stdout)}
 
 
+def scan(root):
+    r = subprocess.run([sys.executable, str(SKILL / "scripts/scan_states.py"), str(root), "--json"],
+                       capture_output=True, text=True)
+    return r.returncode, json.loads(r.stdout)
+
+
 def write(path, text):
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(text)
@@ -102,6 +108,57 @@ class AuditTest(unittest.TestCase):
         write(self.root / "packages/site/package.json", json.dumps({"name": "site", "private": True}))
         _, found = audit(self.root)
         self.assertNotIn("tsdown: site", found)
+
+
+class ScanStatesTest(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.root = Path(self.tmp.name)
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def kinds(self):
+        code, result = scan(self.root)
+        self.assertEqual(code, 0)
+        return result, {(c["kind"], c["file"]): c for c in result["candidates"]}
+
+    def test_combined_flags(self):
+        write(self.root / "src/fetch.ts",
+              "const [isLoading, setIsLoading] = useState(false);\n"
+              "const [isError, setIsError] = useState(false);\n"
+              "if (isLoading && !isError) {}\n")
+        result, found = self.kinds()
+        c = found[("flags", "src/fetch.ts")]
+        self.assertEqual(c["line"], 3)
+        self.assertIn("isLoading && !isError", c["detail"])
+        self.assertEqual(c["stored"], "no")
+        self.assertEqual(result["database"], [])
+
+    def test_status_strings_stored_in_schema(self):
+        write(self.root / "package.json", json.dumps({"dependencies": {"@prisma/client": "1"}}))
+        write(self.root / "prisma/schema.prisma", "model Job {\n  status String\n}\n")
+        write(self.root / "src/job.ts",
+              "class Job {\n  status = 'idle';\n  start() { this.status = 'running'; }\n"
+              "  stop() { if (this.status === 'running') this.status = 'done'; }\n}\n")
+        result, found = self.kinds()
+        c = found[("status", "src/job.ts")]
+        self.assertEqual(c["detail"], "status = idle | running | done")
+        self.assertEqual(c["stored"], "yes")
+        self.assertIn("@prisma/client", result["database"])
+
+    def test_explicit_machines_and_tests_are_skipped(self):
+        write(self.root / "src/lexer.ts",
+              "switch (this.state) {}\nthis.state = 'a';\nthis.state = 'b';\nthis.state = 'c';\n")
+        write(self.root / "src/flags.test.ts", "let isA = true; let isB = false;\nif (isA && isB) {}\n")
+        write(self.root / "src/union.ts", "type S = { status: 'a' } | { status: 'b' } | { status: 'c' };\n")
+        _, found = self.kinds()
+        self.assertEqual(found, {})
+
+    def test_schema_ts_without_tables_is_not_a_database(self):
+        write(self.root / "src/schema.ts", "export const status = 'x';\n")
+        result, _ = self.kinds()
+        self.assertEqual(result["database"], [])
 
 
 if __name__ == "__main__":

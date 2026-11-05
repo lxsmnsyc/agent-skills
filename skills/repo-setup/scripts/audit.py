@@ -4,8 +4,8 @@
 Usage:
   audit.py [root] [--offline] [--json]
 
-Checks the package manager, changesets, the bundler, the test runner, oxlint and
-oxfmt, the license, the check and release workflows, the folders, and each
+Checks the package manager, changesets, the bundler, the test runner, fast-check,
+oxlint and oxfmt, the license, the check and release workflows, the folders, and each
 publishable package. Without --offline it asks npm whether each package exists,
 which decides whether it needs the manual 0.0.0-stage publish.
 
@@ -152,6 +152,10 @@ def audit(root, offline=False):
         add("vitest", "migrate" if runners else "ok", ", ".join(runners))
     else:
         add("vitest", "migrate" if runners else "missing", ", ".join(runners))
+
+    checked = [p.get("name", d.name) for d, p in pkgs if "fast-check" in deps(p)]
+    add("fast-check", "info", ("in " + ", ".join(checked)) if checked else
+        "none; step 4 decides whether a package needs it")
 
     ox = next((root / n for n in ("oxlint.config.ts", ".oxlintrc.json") if (root / n).exists()), None)
     if ox is None:
