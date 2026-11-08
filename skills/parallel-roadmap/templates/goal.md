@@ -17,6 +17,12 @@ merge:
   # story children, and S, docs or chore nodes under mode auto. off: every node gets a pull request,
   # e.g. when branch protection requires pull requests.
   # commits: auto
+land:
+  # batch (the default): nodes land as commits on a local batch branch, and the orchestrator cuts
+  # the batch into the target every few nodes, so CI and deploys run once per cut, not per node.
+  # direct: each node lands on its target on its own, as a pull request or a direct commit.
+  mode: batch
+  # every: 5
 branches:
   # Leave this empty when every pull request targets one branch.
   # For gitflow-style repos, fill it from pr-review's branch_policy.py, for example:

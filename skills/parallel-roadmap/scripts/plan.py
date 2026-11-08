@@ -7,6 +7,8 @@ A `type: story` node groups child nodes (`story: <id>`) on one feature branch: t
 requests target the story branch, and the story itself is one pull request into the parent branch.
 A node ships as a pull request, or as one direct commit onto its target when the merge policy lets
 the orchestrator land it without the maintainer (see ship_mode).
+With `land: batch` (the default), nodes land as commits on a local batch branch, and the orchestrator
+cuts the batch into its target every few nodes, so the target gets one push per batch (see cut_verdict).
 
 Usage:
   plan.py <root> status            # check + waves + critical path (default)
@@ -19,6 +21,7 @@ Usage:
   plan.py <root> refine            # outline nodes close enough to break into briefs now
   plan.py <root> overview          # readable summary of the plan, grouped by milestone
   plan.py <root> archive [--apply]   # done nodes nothing open needs: remove folders, list in archive.md
+  plan.py <root> cut [--checks-pass] # batch branches due to be cut into their targets, exit 0 = one is due
   plan.py <root> can-merge <id> --review-clean --checks-pass [--proof] [--fresh-review] --files - < changed.txt
                                    # may the orchestrator merge this node's PR (or land its commit) itself? exit 0 = yes
 Options: --json, --max-parallel N (default 4; 1, or `run: sequential` in GOAL.md, means sequential), --budget TOKENS (default 20000),
@@ -182,7 +185,7 @@ def archived_node(root, nid, entry):
         "fulfilled_by": entry.get("ref"), "type": None, "target": None, "from": None,
         "outline": False, "milestone": entry.get("milestone"), "archived": True,
         "spent": int(entry.get("spent") or 0), "story": None, "early": False,
-        "ship": "auto",
+        "ship": "auto", "land": "auto",
     }
 
 
@@ -229,6 +232,8 @@ def load(root):
             "early": bool(fm.get("early")),
             # pr: always a pull request. commit: one direct commit onto the target when allowed. auto: decide.
             "ship": str(fm.get("ship") or "auto").strip().lower(),
+            # direct: skip the batch and land on the target on its own (land: batch in GOAL.md).
+            "land": str(fm.get("land") or "auto").strip().lower(),
             "archived": False,
         }
     for nid, entry in read_archive(root).items():
@@ -440,6 +445,145 @@ def apply_targets(nodes, policy):
         s = story_of(n, nodes)
         if s and not n["target"]:
             n["target_eff"] = s["target_eff"] if n["early"] else branch_name(s)
+
+
+LAND_MODES = {"batch", "direct"}
+DEFAULT_CUT_EVERY = 5
+# Types that never wait in a batch: they target a released branch or are a pull request of their own.
+BATCH_BYPASS = {"hotfix", "release", "story"}
+
+
+def land_settings(root):
+    """The `land:` map from GOAL.md frontmatter: mode batch (the default) or direct, and `every`.
+
+    In batch mode, nodes land as commits on a local batch branch, and the orchestrator cuts the
+    batch into its target every `every` nodes. Each cut is one push, so one CI run and one deploy.
+    """
+    raw = goal_settings(root).get("land")
+    raw = raw if isinstance(raw, dict) else {"mode": raw} if raw else {}
+    mode = str(raw.get("mode") or "batch").strip().lower()
+    try:
+        every = max(1, int(raw.get("every") or DEFAULT_CUT_EVERY))
+    except (TypeError, ValueError):
+        every = DEFAULT_CUT_EVERY
+    return {"mode": mode if mode in LAND_MODES else "batch", "every": every,
+            "warning": None if mode in LAND_MODES else
+            f"GOAL.md: land mode '{raw.get('mode')}' is not batch or direct; using batch"}
+
+
+def batch_branch(root, target):
+    """The local batch branch for nodes that land on `target` (None means the main branch)."""
+    slug = Path(root).resolve().name
+    return f"batch/{slug}" if not target else f"batch/{slug}-{target.replace('/', '-')}"
+
+
+def apply_batches(nodes, root, land, held=None):
+    """Set `batch` (the batch branch) and `batch_into` on nodes that land through a batch.
+
+    Story children land on their story branch, and early children on the story's target, so
+    both keep their own branch. Hotfixes, releases, stories, nodes with `land: direct` and nodes
+    held for a release land directly, as before. `ship: pr` does not take a node out of the
+    batch: the maintainer sees it in the cut.
+    """
+    for k, n in nodes.items():
+        n["batch"], n["batch_into"] = None, None
+        if land["mode"] != "batch" or n.get("archived") or n["status"] in DONE | {"dropped"}:
+            continue
+        if n["type"] in BATCH_BYPASS or n.get("land") == "direct" or story_of(n, nodes) or k in (held or {}):
+            continue
+        n["batch"], n["batch_into"] = batch_branch(root, n.get("target_eff")), n.get("target_eff")
+
+
+def _git(cwd, *argv):
+    try:
+        r = subprocess.run(["git", *argv], cwd=cwd, capture_output=True, text=True, timeout=30)
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    return r.stdout if r.returncode == 0 else None
+
+
+def default_branch(cwd):
+    """The repo's main branch: origin/HEAD when set, else main or master, whichever exists."""
+    head = _git(cwd, "symbolic-ref", "--short", "refs/remotes/origin/HEAD")
+    if head and head.strip():
+        return head.strip().split("/", 1)[-1]
+    for b in ("main", "master"):
+        if _git(cwd, "rev-parse", "--verify", "--quiet", f"refs/heads/{b}") is not None:
+            return b
+    return "main"
+
+
+BATCH_TRAILER = re.compile(r"Roadmap node: \S*?nodes/([^/\s]+)/brief\.md")
+
+
+def batch_contents(nodes, root, cwd):
+    """Batch branch -> {"into": branch, "nodes": [ids]}: nodes landed on the batch, not yet on its target.
+
+    Reads the `Roadmap node:` line of each commit on the batch that its target (local or on
+    origin) does not have. A batch branch that does not exist yet is left out.
+    """
+    out = {}
+    for n in nodes.values():
+        if n.get("batch") and n["batch"] not in out:
+            out[n["batch"]] = {"into": n["batch_into"] or default_branch(cwd), "nodes": []}
+    # Nodes already done can still sit on an uncut batch, so look at every batch branch there is.
+    listed = _git(cwd, "for-each-ref", "--format=%(refname:short)", f"refs/heads/{batch_branch(root, None)}*")
+    for b in (listed or "").split():
+        if b not in out:
+            suffix = b[len(batch_branch(root, None)) + 1:]
+            out[b] = {"into": suffix or default_branch(cwd), "nodes": []}
+    for b, info in list(out.items()):
+        if _git(cwd, "rev-parse", "--verify", "--quiet", f"refs/heads/{b}") is None:
+            del out[b]
+            continue
+        nots = [r for r in (info["into"], f"origin/{info['into']}")
+                if _git(cwd, "rev-parse", "--verify", "--quiet", r) is not None]
+        log = _git(cwd, "log", "--format=%B", b, "--not", *nots) or ""
+        for nid in BATCH_TRAILER.findall(log):
+            if nid not in info["nodes"]:
+                info["nodes"].append(nid)
+    return out
+
+
+def waits_for_cut(nid, nodes, contracts, batches):
+    """The batch a node waits for: it needs a node that is only on a batch it does not build on."""
+    n = nodes[nid]
+    for b, info in batches.items():
+        if b == n.get("batch"):
+            continue
+        if set(all_preds(n, nodes, contracts)) & set(info["nodes"]):
+            return b
+    return None
+
+
+def cut_verdict(batch, info, nodes, policy, land, active, waiting, checks_pass, ci_guard="safe"):
+    """Whether a batch is due to be cut into its target, and whether the orchestrator may do it alone.
+
+    Due when it carries `every` nodes, when nothing still running lands on it, or when another
+    node waits for it. The merge policy that each node skipped on the way in applies here.
+    """
+    ids = [k for k in info["nodes"] if k in nodes]
+    due = []
+    if len(ids) >= land["every"]:
+        due.append(f"{len(ids)} nodes landed (cut every {land['every']})")
+    if ids and not [k for k in active if nodes[k].get("batch") == batch]:
+        due.append("no running node lands on it")
+    if waiting:
+        due.append("waited for by " + ", ".join(sorted(waiting)))
+    reasons = []
+    if policy.get("mode") != "auto":
+        reasons.append("merge mode is maintainer")
+    for k in ids:
+        for r in merge_blockers(nodes[k], nodes, dict(policy, mode="auto"), batched=False):
+            reasons.append(f"{k}: {r}")
+    if not checks_pass:
+        reasons.append("the full check did not pass on the batch")
+    if ci_guard != "safe":
+        reasons.append("pushing would start billed CI on a private repo (ci_guard says ask)")
+    commits_off = str(policy.get("commits")).lower() in ("off", "false")
+    return {"batch": batch, "into": info["into"], "nodes": ids, "due": bool(ids) and bool(due),
+            "why": due, "verdict": "maintainer" if reasons else "auto", "reasons": reasons,
+            "method": "pr" if reasons or commits_off else "push"}
 
 
 def story_of(n, nodes):
@@ -1201,8 +1345,13 @@ def review_mode(n, setting="auto"):
 SHIP_MODES = {"auto", "pr", "commit"}
 
 
-def merge_blockers(n, nodes, policy):
-    """Reasons from the merge policy alone why the orchestrator may not merge `n` without the maintainer."""
+def merge_blockers(n, nodes, policy, batched=True):
+    """Reasons from the merge policy alone why the orchestrator may not merge `n` without the maintainer.
+
+    A node that lands on a local batch branch has none: the policy applies when the batch is cut.
+    """
+    if batched and n.get("batch"):
+        return []
     reasons = []
     # A child merging into its story branch reaches the maintainer in the story's pull request.
     child = on_story_branch(n, nodes)
@@ -1228,11 +1377,13 @@ def ship_mode(n, nodes, policy):
     """How a node's change lands on its target: `commit` (one direct commit) or `pr`.
 
     A direct commit skips the pull request, so only work the orchestrator may merge without the
-    maintainer qualifies: a child on its story branch, or any node under `merge.mode: auto`, within
-    the exclusions and the size limit. With `ship: auto`, story children and S, docs or chore nodes
+    maintainer qualifies: a node on a batch branch, a child on its story branch, or any node under
+    `merge.mode: auto`, within the exclusions and the size limit. With `ship: auto`, story children and S, docs or chore nodes
     qualify; `ship: commit` asks for it on any node that passes the policy.
     """
     want = n.get("ship") or "auto"
+    if n.get("batch"):
+        return "commit"
     if n["type"] == "story" or want == "pr" or str(policy.get("commits")).lower() in ("off", "false"):
         return "pr"
     if merge_blockers(n, nodes, policy):
@@ -1463,7 +1614,7 @@ def main():
     ap.add_argument("root", type=Path)
     ap.add_argument("command", nargs="?", default="status",
                     choices=["status", "check", "waves", "ready", "context", "impact", "verify", "refine",
-                             "overview", "can-merge", "archive"])
+                             "overview", "can-merge", "archive", "cut"])
     ap.add_argument("node", nargs="?")
     ap.add_argument("--json", action="store_true")
     ap.add_argument("--max-parallel", type=int, default=DEFAULT_MAX_PARALLEL)
@@ -1471,14 +1622,14 @@ def main():
     ap.add_argument("--upto", choices=list(PRIORITIES), default="could")
     ap.add_argument("--apply", action="store_true", help="archive: remove the folders and write archive.md")
     ap.add_argument("--review-clean", action="store_true", help="can-merge: the review had no blocking or should-fix findings")
-    ap.add_argument("--checks-pass", action="store_true", help="can-merge: lint, typecheck, build and tests passed")
+    ap.add_argument("--checks-pass", action="store_true", help="can-merge, cut: lint, typecheck, build and tests passed")
     ap.add_argument("--proof", action="store_true", help="can-merge: the fix fails on base and passes on head")
     ap.add_argument("--files", default="", help="can-merge: changed files, comma separated, or '-' to read lines from stdin")
     ap.add_argument("--fresh-review", action="store_true", help="can-merge: a fresh agent reviewed it (needed when the node's review mode is self)")
-    ap.add_argument("--ci-guard", default="safe", choices=["safe", "ask"], help="can-merge: the verdict of pr-author's ci_guard.py")
+    ap.add_argument("--ci-guard", default="safe", choices=["safe", "ask"], help="can-merge, cut: the verdict of pr-author's ci_guard.py")
     ap.add_argument("--horizon", type=int, default=DEFAULT_HORIZON,
                     help="waves ahead within which outline nodes are due for refinement")
-    ap.add_argument("--cwd", default=".", help="directory to run verify commands in (repo root)")
+    ap.add_argument("--cwd", default=".", help="repo root: where verify commands run and where git finds batch branches")
     ap.add_argument("--timeout", type=int, default=600)
     args = ap.parse_args()
 
@@ -1497,6 +1648,12 @@ def main():
     warnings += setting_warnings(args.root)
     warnings += spend_warnings(spend(nodes, token_budget(args.root)))
     held = release_fence(nodes, milestones, release)
+    land = land_settings(args.root)
+    if land["warning"]:
+        warnings.append(land["warning"])
+    apply_batches(nodes, args.root, land, held)
+    batches = (batch_contents(nodes, args.root, args.cwd)
+               if land["mode"] == "batch" and args.command in ("ready", "cut", "status") else {})
 
     if args.command == "check":
         if args.json:
@@ -1556,6 +1713,32 @@ def main():
             for reason in r["reasons"]:
                 print(f"  - {reason}")
         sys.exit(0 if r["verdict"] == "auto" else 1)
+
+    if args.command == "cut":
+        active = [k for k, n in live(nodes).items() if n["status"] == "active"]
+        todo = [k for k, n in live(nodes).items() if n["status"] in ("todo", "active")]
+        rs = [cut_verdict(b, info, nodes, merge_policy(args.root), land, active,
+                          [k for k in todo if waits_for_cut(k, nodes, contracts, batches) == b],
+                          args.checks_pass, args.ci_guard)
+              for b, info in sorted(batches.items())]
+        if args.json:
+            print(json.dumps(rs, indent=2))
+            return
+        if land["mode"] != "batch":
+            print("land mode is direct: nodes land on their targets, nothing to cut")
+            return
+        for r in rs:
+            state = "due" if r["due"] else ("empty" if not r["nodes"] else "not due")
+            print(f"{r['batch']} -> {r['into']}: {len(r['nodes'])} node(s), {state}"
+                  + (f" ({'; '.join(r['why'])})" if r["due"] else ""))
+            if r["nodes"]:
+                print("  carries: " + ", ".join(r["nodes"]))
+                print(f"  cut: {r['verdict']} ({r['method']})")
+                for reason in r["reasons"]:
+                    print(f"  - {reason}")
+        if not rs:
+            print("no batch branch yet")
+        sys.exit(0 if any(r["due"] for r in rs) else 1)
 
     if args.command == "refine":
         due = refine_due(nodes, contracts, args.horizon, args.max_parallel)
@@ -1620,6 +1803,9 @@ def main():
     if args.command == "ready":
         ids = ready(nodes, contracts, args.upto,
                     held if release and release["fence"] == "start" else None)
+        # A node that needs work still sitting on a batch it does not build on waits for the cut.
+        cut_wait = {k: b for k in ids if (b := waits_for_cut(k, nodes, contracts, batches))}
+        ids = [k for k in ids if k not in cut_wait]
         rs = review_setting(args.root)
         mp = merge_policy(args.root)
         if args.json:
@@ -1629,7 +1815,10 @@ def main():
                 # build: spawn a worker. story-pr: open the story branch's pull request, no worker.
                 "action": "story-pr" if nodes[k]["type"] == "story" else "build",
                 "story": nodes[k]["story"] if story_of(nodes[k], nodes) else None,
-                "target": nodes[k].get("target_eff"),
+                # A batched node builds on and lands on its batch branch; batch_into is where the cut goes.
+                "target": nodes[k].get("batch") or nodes[k].get("target_eff"),
+                "batch_into": (nodes[k].get("batch_into") or default_branch(args.cwd))
+                if nodes[k].get("batch") else None,
                 "branch": branch_name(nodes[k]),
                 "pr_title": pr_title(nodes[k]),
                 # pr: the worker opens a pull request. commit: no pull request, the orchestrator lands one commit.
@@ -1650,9 +1839,12 @@ def main():
                           f"{nodes[k].get('target_eff') or 'main'}]  {nodes[k]['title']}")
                     continue
                 part = f", story {nodes[k]['story']}" if story_of(nodes[k], nodes) else ""
-                ship = ", direct commit" if ship_mode(nodes[k], nodes, mp) == "commit" else ""
+                ship = (f", on {nodes[k]['batch']}" if nodes[k].get("batch") else
+                        ", direct commit" if ship_mode(nodes[k], nodes, mp) == "commit" else "")
                 print(f"{k}  [{nodes[k]['size']}, {model_for(nodes[k])}, {review_mode(nodes[k], rs)} review"
                       f"{ship}{hold}{part}]  {nodes[k]['title']}")
+            for k, b in sorted(cut_wait.items()):
+                print(f"{k}  waits for the cut of {b}")
             if not ids:
                 print("nothing ready")
             elif mode == "sequential":
@@ -1685,6 +1877,10 @@ def main():
             print(line)
         for r in sorted(set(held.values())):
             print(f"held for release {r}: " + ", ".join(sorted(k for k, x in held.items() if x == r)))
+        for b, info in sorted(batches.items()):
+            if info["nodes"]:
+                print(f"{b}: {len(info['nodes'])} node(s) not yet cut into {info['into']} "
+                      f"(cut every {land['every']}; see plan.py cut)")
     print_schedule(s, nodes)
 
 

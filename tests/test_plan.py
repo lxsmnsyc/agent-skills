@@ -409,5 +409,86 @@ class PlanTest(unittest.TestCase):
         _, _, (_, warnings) = self.load()
         self.assertEqual(warnings, [])
 
+    def test_batch_mode_routes_nodes_through_a_batch(self):
+        (self.root / "GOAL.md").write_text("---\nmerge:\n  mode: maintainer\n---\n# G\n")
+        node(self.root, "f", size="L", owns="[src/f/**]", type="feature")
+        node(self.root, "hf", size="S", owns="[src/h/**]", type="hotfix")
+        node(self.root, "own", size="M", owns="[src/o/**]", land="direct")
+        node(self.root, "pinned", size="M", owns="[src/p/**]", ship="pr")
+        node(self.root, "st", size="M", owns="[src/s/**]", type="story")
+        node(self.root, "child", size="M", owns="[src/s/c/**]", story="st")
+        nodes, _, _ = self.load()
+        land = plan.land_settings(self.root)
+        self.assertEqual((land["mode"], land["every"]), ("batch", 5))
+        plan.apply_targets(nodes, None)
+        plan.apply_batches(nodes, self.root, land)
+        pol = plan.merge_policy(self.root)
+        self.assertEqual(nodes["f"]["batch"], plan.batch_branch(self.root, None))
+        for k in ("hf", "own", "st", "child"):
+            self.assertIsNone(nodes[k]["batch"], k)
+        # The maintainer policy moves to the cut, so a batched L node still lands as a commit.
+        self.assertEqual(plan.ship_mode(nodes["f"], nodes, pol), "commit")
+        self.assertEqual(plan.ship_mode(nodes["own"], nodes, pol), "pr")
+        # ship: pr from before batches does not take a node out of the batch.
+        self.assertIsNotNone(nodes["pinned"]["batch"])
+        nodes["f"]["status"] = "active"
+        r = plan.can_merge("f", nodes, pol, True, True, False, ["src/f/a.ts"])
+        self.assertEqual((r["verdict"], r["method"]), ("auto", "commit"), r["reasons"])
+        cut = plan.cut_verdict("b", {"into": "main", "nodes": ["f"]}, nodes, pol, land, [], [], True)
+        self.assertTrue(cut["due"])
+        self.assertEqual(cut["verdict"], "maintainer")
+        self.assertTrue(any("above the limit" in x for x in cut["reasons"]), cut["reasons"])
+        (self.root / "GOAL.md").write_text("---\nland: direct\n---\n# G\n")
+        plan.apply_batches(nodes, self.root, plan.land_settings(self.root))
+        self.assertIsNone(nodes["f"]["batch"])
+
+    def test_cut_is_due_by_count_idle_or_waiting(self):
+        (self.root / "GOAL.md").write_text("---\nmerge:\n  mode: auto\nland:\n  every: 2\n---\n# G\n")
+        node(self.root, "a", size="M", owns="[src/a/**]", status="done")
+        node(self.root, "b", size="M", owns="[src/b/**]", status="active")
+        nodes, _, _ = self.load()
+        land, pol = plan.land_settings(self.root), plan.merge_policy(self.root)
+        plan.apply_batches(nodes, self.root, land)
+        bb = plan.batch_branch(self.root, None)
+        one = {"into": "main", "nodes": ["a"]}
+        self.assertFalse(plan.cut_verdict(bb, one, nodes, pol, land, ["b"], [], True)["due"])
+        self.assertTrue(plan.cut_verdict(bb, one, nodes, pol, land, ["b"], ["rel"], True)["due"])
+        two = {"into": "main", "nodes": ["a", "b"]}
+        r = plan.cut_verdict(bb, two, nodes, pol, land, ["b"], [], True)
+        self.assertTrue(r["due"])
+        self.assertEqual((r["verdict"], r["method"]), ("auto", "push"), r["reasons"])
+        self.assertEqual(plan.cut_verdict(bb, two, nodes, pol, land, [], [], False)["method"], "pr")
+
+    def test_batch_contents_and_waiting_for_the_cut(self):
+        import subprocess
+        repo = self.root / "repo"
+        rroot = repo / "roadmaps" / "r"
+        (rroot / "nodes").mkdir(parents=True)
+        (rroot / "contracts").mkdir()
+        node(rroot, "a", size="M", owns="[src/a/**]", status="done")
+        node(rroot, "c", size="M", owns="[src/c/**]")
+        node(rroot, "rel", size="S", type="release", gate="true", depends_on="\n" + dep("a", "hard", why="ships a"))
+        node(rroot, "d", size="M", owns="[src/d/**]", depends_on="\n" + dep("a", "hard", why="extends a"))
+
+        def git(*argv):
+            subprocess.run(["git", "-c", "user.name=t", "-c", "user.email=t@t", *argv], cwd=repo,
+                           check=True, capture_output=True)
+        git("init", "-q", "-b", "main")
+        git("commit", "-q", "--allow-empty", "-m", "init")
+        git("branch", "batch/r")
+        git("switch", "-q", "batch/r")
+        git("commit", "-q", "--allow-empty", "-m", "feat: a", "-m", "Roadmap node: roadmaps/r/nodes/a/brief.md")
+        nodes, contracts, _ = plan.load(rroot)
+        plan.apply_targets(nodes, None)
+        plan.apply_batches(nodes, rroot, plan.land_settings(rroot))
+        batches = plan.batch_contents(nodes, rroot, repo)
+        self.assertEqual(batches, {"batch/r": {"into": "main", "nodes": ["a"]}})
+        # The release builds on main, so it waits; d builds on the batch, so it does not.
+        self.assertEqual(plan.waits_for_cut("rel", nodes, contracts, batches), "batch/r")
+        self.assertIsNone(plan.waits_for_cut("d", nodes, contracts, batches))
+        git("switch", "-q", "main")
+        git("merge", "-q", "--ff-only", "batch/r")
+        self.assertEqual(plan.batch_contents(nodes, rroot, repo)["batch/r"]["nodes"], [])
+
 if __name__ == "__main__":
     unittest.main()

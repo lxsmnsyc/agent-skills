@@ -46,7 +46,7 @@ Templates for each file are in `templates/`. Copy them; do not invent new fields
 
 Token spend lives in the briefs too. When a node closes, the orchestrator sets `spent:` to the tokens its worker, reviewer and fix rounds used, from the agents' usage reports. With `budget: {tokens: N}` in `GOAL.md` (usually from a goal debate), `plan.py` reports spend against the budget and a forecast at the current rate, and warns at 80% and when the forecast goes over. Over budget means stop and cut scope, or rerun the goal debate with the actual spend.
 
-Status lives in exactly one place: the `status` field of each brief. `done` means the node's change landed on its target branch: its pull request merged, or its direct commit was pushed. For a story's child, that is the story branch. In repos with several stages (`dev -> next -> main`), `released` means the work reached the last one. In repos that publish from one branch, it means the work was published. The curator sets it when a release node merges. Other documents link to the roadmap instead of restating status. Repos that track status in three places (a strategy doc, an ADR header and a proposal list) drift apart within weeks.
+Status lives in exactly one place: the `status` field of each brief. `done` means the node's change landed on its target branch: its pull request merged, or its direct commit was pushed. For a story's child, that is the story branch. For a batched node, it is the batch branch. In repos with several stages (`dev -> next -> main`), `released` means the work reached the last one. In repos that publish from one branch, it means the work was published. The curator sets it when a release node merges. Other documents link to the roadmap instead of restating status. Repos that track status in three places (a strategy doc, an ADR header and a proposal list) drift apart within weeks.
 
 Use the repo's existing decision record system when there is one (for example `docs/decisions/NNNN-*.md`). Only create `<root>/decisions/` when the repo has nothing.
 
@@ -65,6 +65,7 @@ python3 <skill>/scripts/plan.py <root> refine          # outline nodes close eno
 python3 <skill>/scripts/plan.py <root> overview        # readable summary for the user, grouped by milestone
 python3 <skill>/scripts/plan.py <root> can-merge <id> ...  # may the orchestrator merge this PR without the user?
 python3 <skill>/scripts/plan.py <root> archive [--apply]   # remove done nodes nothing open still needs
+python3 <skill>/scripts/plan.py <root> cut [--checks-pass] # is the batch due to be cut into the main branch, and who may do it?
 ```
 
 Options: `--max-parallel N` (default 4; `1`, or `run: sequential` in `GOAL.md`, means sequential mode), `--budget TOKENS` (default 20000), `--upto must|should|could|later`, `--cwd DIR` (where verify commands run, the repo root).
@@ -123,7 +124,13 @@ A pull request is for a person to review and approve. Some nodes are never read 
 - It is a story child on the story branch. The maintainer reviews it in the story pull request.
 - Under `merge.mode: auto`, it is S, or a docs or chore node. Set `ship: commit` to allow larger nodes up to `max_size`.
 
+In batch mode (below), this is decided at the cut instead. Every batched node lands as a commit on the batch. The merge policy decides whether the cut is pushed or opened as one pull request.
+
 Everything else ships as a pull request. That covers stories themselves, early children and the excluded types (releases, hotfixes, contracts, gates). Under the default `merge.mode: maintainer`, it also covers every node that is not a story child. `ship: pr` on a brief, or `merge.commits: off` in `GOAL.md`, always keeps the pull request. When the checks at landing time fail `can-merge`, the node falls back to a pull request for the maintainer.
+
+### Batches: one push per few nodes
+
+Every push to the main branch can start CI and a deploy, and hosts cap builds. So by default (`land: batch` in `GOAL.md`), nodes land as commits on a local batch branch, `batch/<slug>`, and workers build on it. The orchestrator cuts the batch into the main branch at checkpoints: one push, or one pull request for the maintainer, every `every` nodes (default 5). Status commits and curator edits ride the batch too. Follow-up and fix nodes added mid-run join the open batch, so a growing roadmap does not mean more deploys. Hotfixes, releases, stories and nodes with `land: direct` land on their own. `land: direct` in `GOAL.md` turns batching off. See "Batches" in `references/orchestration.md`.
 
 ### Detail where it is near, outline where it is far
 
@@ -198,7 +205,8 @@ Read `references/orchestration.md` before this step. In short:
 3. Before the first child of a story starts, create the story branch from the story's target and set the story to `status: active`. A ready node with `"action": "story-pr"` is a story whose children are all done: open its pull request yourself, without a worker (see "Stories" in `references/orchestration.md`).
 4. Spawn one agent per node with `isolation: worktree`, using `templates/worker-prompt.md` and the model the script suggests. Spawn them in one message so they run at the same time. In sequential mode (`mode` in `ready --json`), start only the first node, and the worktree is optional (see "Sequential mode" in `references/orchestration.md`). Each worker first checks whether its work already exists. For a node that fixes a problem, it then proves the problem on the target before changing code (see "Unproven problems" in `references/orchestration.md`). No proof, no pull request. Then it builds on a branch from the node's target (`target` in `ready --json`, or the main branch when there is no branch policy). With `ship: pr` it opens one pull request against that target. With `ship: commit` it opens none, and the orchestrator lands the branch as one commit (see "Direct commits" in `references/orchestration.md`).
 5. Each change is reviewed once and checked once, as the `review` field of `ready --json` says (set by `review:` in `GOAL.md`, default `auto`). In `fresh` mode the orchestrator spawns one reviewer with the pr-review skill. In `self` mode the worker reviews its own branch. The orchestrator works from the replies and the script output, and does not review or check a second time. Then the pull request goes to the maintainer, unless `plan.py <root> can-merge` allows the orchestrator to merge it (see "Auto-merge" in `references/orchestration.md`). A `ship: commit` node that passes `can-merge` lands as one commit. One that fails gets a pull request for the maintainer. Agents never approve their own work. A node is `done` when its change lands on its target. Run the curator (phase 7) at checkpoints.
-6. Stop at gates. At checkpoints, end the session to keep the orchestrator's context small. The next session resumes from the repo (see "Keeping the orchestrator's context small" in `references/orchestration.md`). Then go back to step 1.
+6. In batch mode, run `plan.py <root> cut` at checkpoints and cut the batch when it is due (see "Batches" in `references/orchestration.md`).
+7. Stop at gates. At checkpoints, end the session to keep the orchestrator's context small. The next session resumes from the repo (see "Keeping the orchestrator's context small" in `references/orchestration.md`). Then go back to step 1.
 
 One change per node is the default, because every piece of work then merges on its own and nothing waits for a large integration branch. A story is the exception: a feature branch scoped to one feature, which merges as soon as that feature is done. Use a branch for the whole roadmap only when the user asks for it.
 

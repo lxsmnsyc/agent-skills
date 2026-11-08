@@ -7,6 +7,7 @@ How to run nodes with several agents at once, ship their work, and keep the plan
 - Roles
 - One pull request per node
 - Stories
+- Batches
 - Releasing from one branch
 - Rolling and waves
 - The loop
@@ -36,6 +37,8 @@ How to run nodes with several agents at once, ship their work, and keep the plan
 
 Each node ships as its own pull request against its target branch: the main branch in trunk-based repos, or the branch the policy in `GOAL.md` gives for the node's type in gitflow-style repos (for example features to `dev`). This is the default because it keeps every piece of work mergeable on its own: nothing waits for a large integration branch to be finished. A node that no person reviews on its own (a story child, or small work under `merge.mode: auto`) skips the pull request and lands as one direct commit instead (see "Direct commits"). The rules below hold for both.
 
+With `land: batch` (the default), nodes do not land on their target one by one. They land on a local batch branch, and the batch reaches the target in one push every few nodes (see "Batches"). Each node is still one change: one commit on the batch, reviewed and checked on its own.
+
 What makes this safe:
 
 - The contract wave merges first, so every later pull request builds on frozen interfaces that already exist on the main branch.
@@ -55,7 +58,7 @@ Hotfix nodes target the released branch directly, and the worker opens the back-
 
 A story is one feature on its own branch, `feat/<story id>`. Its children are nodes whose `target` in `ready --json` is that branch.
 
-1. **Open the branch.** When the first child becomes ready, create the story branch from the story's target: `git branch feat/<story id> <target>`. Push it, unless the repo is private and the user keeps branches local (see "One pull request per node"). Set the story to `status: active` in the same status commit as the child.
+1. **Open the branch.** When the first child becomes ready, create the story branch from the story's target: `git branch feat/<story id> <target>`. In batch mode, keep it local until the story pull request opens, because every push can start a preview build. In direct mode, push it, unless the repo is private and the user keeps branches local (see "One pull request per node"). Set the story to `status: active` in the same status commit as the child.
 2. **Children.** Each child runs as a normal node: worker, worktree, review, outcome. Its worktree must start from the story branch, so the worker prompt tells it to reset to `<target>` before its first commit. By default a child has `ship: commit` in `ready --json`: it opens no pull request, and the orchestrator lands it on the story branch as one commit (see "Direct commits"), so the story keeps one commit per child. A child with `ship: pr` opens a pull request against the story branch, merged with a merge commit, not a squash. With `merge.stories: auto` (the default), the orchestrator lands a child when `plan.py can-merge` allows it. This holds even when `merge.mode` is `maintainer`, because the maintainer reviews the whole story later. The exclusions still apply: a gated child or one that provides a contract goes to the maintainer.
 3. **Early children.** A child with `early: true` targets the story's target, not the story branch, and follows the normal merge rules. After it merges, merge the target into the story branch so later children build on it.
 4. **Keep the branch current.** At every checkpoint, merge the story's target into the story branch, and run the fast check there. Conflicts found now are cheap. Conflicts found when the story pull request opens hold up the whole feature.
@@ -64,6 +67,27 @@ A story is one feature on its own branch, `feat/<story id>`. Its children are no
 Roadmap files written by a child (its outcome and log) reach the main branch only with the story. Curators and siblings read them from the story branch: `git show feat/<story id>:<root>/nodes/<id>/outcome.md`.
 
 Sometimes a child cannot be done on the story branch, for example when it needs a fix that other work needs too. The worker reports this as a blocker. The orchestrator then adds an early child for that part, with the Change procedure.
+
+## Batches
+
+Every push to the main branch can start CI and a deploy, and hosts cap builds per day or per month. One node per push hits that cap quickly, more so when a roadmap grows follow-up and fix nodes mid-run. So under `land: batch` in `GOAL.md` (the default), nodes land on a local batch branch instead. The orchestrator then cuts the batch into the target in one push:
+
+```yaml
+land:
+  mode: batch   # direct: every node lands on its target alone
+  every: 5      # a cut is due when the batch carries this many nodes
+```
+
+The batch for the main branch is `batch/<slug>`, after the roadmap folder. A node with another target gets `batch/<slug>-<target>`. `ready --json` gives a batched node `target` = the batch branch, `batch_into` = where the cut goes, and `ship: commit`.
+
+1. **Open the batch.** Before the first batched node starts, create a worktree for it: `git worktree add ../<repo>-batch -b batch/<slug> <main>`. The orchestrator works there for the whole run. It runs `plan.py` with `--cwd` set to it, and commits status changes, outcomes and curator edits on the batch. The user's own checkout is left alone, and roadmap bookkeeping reaches the main branch only with a cut.
+2. **Workers** build on the batch branch, like story children build on the story branch. A `hard` dependent starts as soon as its upstream lands on the batch, without waiting for a merge and deploy on the main branch.
+3. **Landing.** Review and check each node as usual, then land it on the batch as one commit (see "Direct commits"). The `Roadmap node:` line in the commit body is how `plan.py` finds what the batch carries, so keep it. The merge policy does not apply here: it applies to the cut. Nothing is pushed.
+4. **Cut.** At each checkpoint, run `plan.py <root> cut --cwd <batch worktree>`. A cut is due when the batch carries `every` nodes, when no running node lands on it, or when another node waits for it. In the batch worktree, merge the current target in (`git fetch`, then `git merge origin/<main>`), and run the full check once. Then run `plan.py <root> cut --checks-pass`. With `auto (push)`, push the batch to the target: `git push origin HEAD:<main>`. That is one CI run and one deploy for the whole batch. With `maintainer (pr)`, push the batch branch and open one pull request. Title it after the roadmap and the cut's milestone, and list each node with a one-line outcome. The maintainer merges it, with a merge commit so each node stays one commit. After the cut, the batch branch continues from the same commit. Running workers keep building on it.
+5. **Waiting for the cut.** Some nodes build on the target, not on the batch: hotfixes, releases, stories, early children, nodes with `land: direct`, and nodes held for a release. Such a node may need a node that sits on an uncut batch. Then `ready` holds it back with "waits for the cut", and `cut` reports the batch as due.
+6. **A bad commit.** If a landed node breaks the batch, revert that one commit on the batch and reopen the node. The cut waits for the revert, not for the rest of the batch.
+
+Each node is still reviewed and checked on its own before it lands. The cut adds one full check of the whole batch on top of the current target. A node the maintainer should see on its own gets `land: direct`; `ship: pr` alone does not take it out of the batch. Use `land: direct` for the whole roadmap when the repo has no build cap and the user wants every node on the main branch at once.
 
 ## Releasing from one branch
 
@@ -102,10 +126,10 @@ Waves printed by `plan.py status` are a forecast in both modes. The decision to 
 1. `python3 <skill>/scripts/plan.py <root> check`. Stop on errors.
 2. `python3 <skill>/scripts/plan.py <root> verify` runs the `verify` commands of all todo nodes. Close any node whose acceptance already holds (see "Already fulfilled work").
 3. `python3 <skill>/scripts/plan.py <root> ready --json`. The list is sorted by priority, then by critical path. Take up to `--max-parallel` nodes from the top.
-4. Set each one to `status: active` and commit that to the main branch. For a story's first child, also create the story branch and set the story `active` (see "Stories"). Keep the commit to the brief files only.
+4. Set each one to `status: active` and commit that: on the batch branch in batch mode, on the main branch in direct mode. For a story's first child, also create the story branch and set the story `active` (see "Stories"). Keep the commit to the brief files only.
 5. Spawn the workers in a single message so they run at the same time (see "Spawning a worker"). In sequential mode, spawn only the first one.
 6. When a worker returns, act on its reply (see "Merging and verification"). In `self` mode the worker has already reviewed and checked it. In `fresh` mode, spawn the reviewer.
-7. When the pull request merges or the commit lands, set `status: done` and `spent:` (the tokens of the worker, the reviewer and any fix rounds, added up from their usage reports), and run the curator at checkpoints.
+7. When the pull request merges or the commit lands (on the batch, in batch mode), set `status: done` and `spent:`. Spent is the tokens of the worker, the reviewer and any fix rounds, added up from their usage reports. Run the curator at checkpoints. At each checkpoint, run `plan.py cut` and cut the batch when it is due (see "Batches").
 8. Stop at gates (see "Gates"). At checkpoints, end the session (see "Keeping the orchestrator's context small"). Otherwise go to step 1.
 
 ## Keeping the orchestrator's context small
@@ -114,7 +138,7 @@ The orchestrator is usually the most expensive agent in a run. It reads its whol
 
 - **Work from replies and script output.** Do not read workers' diffs, logs or full outcomes in this session. The curator reads outcomes. `plan.py` answers the questions about paths, readiness and merge rules.
 - **Delegate investigation.** When a reply raises something that needs reading code, spawn an agent and ask for a short answer.
-- **End the session at checkpoints.** Every piece of state is in the repo: statuses, outcomes, logs and wave reports. In waves mode, do this after each wave's curator pass. In rolling mode, do it after each curator pass or after about five merged pull requests. Check that no worker is still running, commit the roadmap files, and make sure `reviews/wave-<n>.md` says what is active and what waits on what. Then tell the user to start a new session (`/clear`) with "Continue the roadmap in `<root>`". The new session starts from `plan.py <root> status` and the last wave report.
+- **End the session at checkpoints.** Every piece of state is in the repo: statuses, outcomes, logs and wave reports. In waves mode, do this after each wave's curator pass. In rolling mode, do it after each curator pass or after about five merged pull requests. In batch mode, cut the batch first when `plan.py cut` says it is due. Check that no worker is still running, commit the roadmap files, and make sure `reviews/wave-<n>.md` says what is active and what waits on what. Then tell the user to start a new session (`/clear`) with "Continue the roadmap in `<root>`". The new session starts from `plan.py <root> status` and the last wave report.
 
 ## Spawning a worker
 
@@ -211,7 +235,7 @@ At every checkpoint, report what merged on its own, with links, so the user sees
 
 ## Direct commits
 
-A node with `ship: commit` in `ready --json` opens no pull request. `plan.py` gives it that only when the orchestrator may land it without the maintainer (see "Pull request or direct commit" in `SKILL.md`). That covers story children on their story branch, and S, docs or chore nodes under `merge.mode: auto`. The worker builds, reviews and checks the branch as usual and replies with the branch name. Then:
+A node with `ship: commit` in `ready --json` opens no pull request. `plan.py` gives it that only when the orchestrator may land it without the maintainer (see "Pull request or direct commit" in `SKILL.md`). That covers nodes on a batch branch, story children on their story branch, and S, docs or chore nodes under `merge.mode: auto`. On a local batch or story branch, steps 2 to 4 need no remote. Rebase onto the local branch, then fast-forward it with `git merge --ff-only <branch>` in the worktree that has it checked out. The worker builds, reviews and checks the branch as usual and replies with the branch name. Then:
 
 1. Run `can-merge` as in "Auto-merge". A verdict of `auto` with method `commit` lets the commit land. With `maintainer`, push the branch and open a pull request against the target for the maintainer, with the reasons.
 2. In the worker's worktree (or the checkout that has the branch), rebase onto the current target: `git fetch`, then `git rebase <target>` (`origin/<target>` when the branch is pushed). If the target moved, rerun the fast check.

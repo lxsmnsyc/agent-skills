@@ -11,7 +11,7 @@ export const meta = {
 // args: { root, skill, base, nodes: [{ id, title, model, branch, pr_title, mode, review, ship, target, story, action,
 //         context: [paths] }], sequential?, isolation? }
 // `base` is the branch pull requests target (usually main). Check it out before running,
-// so worktrees start from it. A node with a `target` (a story child) builds on that branch instead.
+// so worktrees start from it. A node with a `target` (a story child or a batched node) builds on that branch instead.
 // Nodes with `action: story-pr` are skipped: the orchestrator opens a story's pull request itself. `sequential: true` (or `mode: sequential` on the nodes) runs
 // the workers one after another. `isolation: 'none'` then runs them in the current checkout
 // instead of worktrees; only use it when the tree is clean and the user agreed. Each worker reviews
@@ -85,7 +85,7 @@ function workerPrompt(n) {
 
 ${isolation === 'none'
     ? `You work in the main checkout, not a worktree. Start your branch: \`git fetch\`, then \`git switch -c ${n.branch || 'feat/' + n.id} ${baseOf(n)}\`. When you are done, switch back to \`${base}\`.`
-    : `First give your branch a descriptive name: \`git branch -m ${n.branch || 'feat/' + n.id}\` (your worktree may start on a generated name such as worktree-agent-...).${baseOf(n) !== base ? ` Your work builds on \`${baseOf(n)}\`, the branch of story ${n.story}: run \`git reset --hard ${baseOf(n)}\` before your first commit.` : ''}`} Use "${n.pr_title || n.title}" as the pull request title, following the repo's own title convention if it differs.
+    : `First give your branch a descriptive name: \`git branch -m ${n.branch || 'feat/' + n.id}\` (your worktree may start on a generated name such as worktree-agent-...).${baseOf(n) !== base ? ` Your work builds on \`${baseOf(n)}\`${n.story ? `, the branch of story ${n.story}` : ', the batch branch'}: run \`git reset --hard ${baseOf(n)}\` before your first commit.` : ''}`} Use "${n.pr_title || n.title}" as the pull request title, following the repo's own title convention if it differs.
 
 Read these files in this order. They are all the context you need; do not read other nodes' logs.
 ${n.context.map(p => `- ${p}`).join('\n')}

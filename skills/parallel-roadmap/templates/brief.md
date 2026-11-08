@@ -10,6 +10,7 @@ outline: false          # true for far-off work that is not broken into a brief 
 milestone:              # optional group from the milestones list in GOAL.md, e.g. a quarter or a release. Required on release nodes that publish from one branch
 target:                 # branch the change targets. Empty means the branch policy for this type
 ship: auto              # auto: plan.py picks pr or commit from the merge policy | pr: always a pull request | commit: one direct commit when the policy allows
+land: auto              # auto: through the batch when GOAL.md has land: batch (the default) | direct: skip the batch, land on the target alone
 from:                   # release nodes only: the branch being promoted (target is where it goes)
 size: M                 # S | M | L | XL (XL must be split)
 spike: false            # true for nodes that answer a question instead of shipping code
