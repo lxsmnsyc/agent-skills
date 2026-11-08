@@ -14,6 +14,7 @@ How to run nodes with several agents at once, ship their work, and keep the plan
 - Spawning a worker
 - Sequential mode
 - Already fulfilled work
+- Unproven problems
 - Merging and verification
 - Auto-merge
 - Direct commits
@@ -149,6 +150,16 @@ When the existing code differs from what a contract assumed, rewrite the contrac
 Partly fulfilled nodes: if the node has not started, shrink its brief to what is left and resize it. If it is active, the worker handles it. When the remainder becomes its own follow-up node, it keeps the original node's priority. Changing priority is the user's decision, so propose it in the response instead of doing it.
 
 A passing `verify` command is a signal, not proof. Read the code before closing a node: an empty stub or a placeholder test can make a weak check pass.
+
+## Unproven problems
+
+Some nodes fix a problem: a bug, a slow path, a memory or size cost, a flake. Such a node is worth building only if the problem exists on its target now. Briefs get their evidence at planning time, and the code moves after that. An earlier node can remove the cost, or the profile that pointed at it was never specific. A node built on a stale premise costs a full session and a pull request that the maintainer then closes.
+
+- **Planning**: the brief's Evidence line names the test, profile or numbers and the commit they came from. When there is none, or when the evidence is only an estimate, put a measuring step or spike first (see "Measure, then change" in `references/decomposition.md`).
+- **Inside the worker**: before changing code, the worker proves the problem on the current target. That is a test that fails there, or a cost beyond the noise that a profile places in the changed code. If it does not show, the worker writes a "Not reproduced" outcome, makes no code changes and opens no pull request.
+- **Before the pull request**: the same proof must pass on the branch. A fix whose test still fails, or an optimization whose gain stays within the noise, opens no pull request. The worker records the result in the outcome and reports it.
+
+When a worker reports "not reproduced" or a missed proof, do not spawn a reviewer. Show the user the evidence and propose dropping the node (`status: dropped`, the outcome says why) or rewriting its brief around the real cause. Dropping and rewriting are the user's decisions. Keep the branch until they decide.
 
 ## Merging and verification
 

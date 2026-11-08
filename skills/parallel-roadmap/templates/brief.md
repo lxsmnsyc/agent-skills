@@ -44,6 +44,7 @@ depends_on:
 <Only what the worker cannot get from GOAL.md, the contracts and dependency outcomes. Link code and documents (L3) instead of pasting them.>
 
 - Source: <link to the proposal, ADR or paragraph this came from>
+- Evidence: <for a node that fixes a problem: the failing test, profile or numbers that show it, and the commit they were taken at>
 
 ## Steps
 

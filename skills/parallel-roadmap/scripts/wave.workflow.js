@@ -26,6 +26,8 @@ const REPORT = {
     branch: { type: 'string' },
     pr: { type: 'string' },
     already_fulfilled: { type: 'boolean' },
+    not_reproduced: { type: 'boolean' },
+    proof: { type: 'string' },
     acceptance_pass: { type: 'boolean' },
     review_mode: { type: 'string', enum: ['fresh', 'self', 'none'] },
     review_rounds: { type: 'integer' },
@@ -36,7 +38,7 @@ const REPORT = {
     blockers: { type: 'array', items: { type: 'string' } },
     summary: { type: 'string' },
   },
-  required: ['id', 'branch', 'pr', 'already_fulfilled', 'acceptance_pass', 'review_mode', 'review_rounds', 'review_clean', 'checks_pass', 'outcome_written', 'change_requests', 'blockers', 'summary'],
+  required: ['id', 'branch', 'pr', 'already_fulfilled', 'not_reproduced', 'proof', 'acceptance_pass', 'review_mode', 'review_rounds', 'review_clean', 'checks_pass', 'outcome_written', 'change_requests', 'blockers', 'summary'],
 }
 
 const CURATION = {
@@ -90,21 +92,22 @@ ${n.context.map(p => `- ${p}`).join('\n')}
 
 Then:
 0. Check first whether the work already exists. Run the brief's \`verify\` command if it has one, and look at the code its acceptance criteria describe. If every criterion already holds, make no code changes: write the outcome with "Already fulfilled" and the evidence, commit it, skip the pull request, and report already_fulfilled=true. If some criteria hold, do only the rest.
-1. If \`${root}/nodes/${n.id}/log.md\` exists, you are resuming. Continue from where it stops.
-2. Do the work in the brief. Edit only the brief's owned paths and \`${root}/nodes/${n.id}/\`. If you must touch another file, keep the change minimal and record it under Deviations in your outcome.
-3. Use only the numbers your brief reserves for migrations, decision records or other numbered files.
-4. Build against stubs for \`behavior\` dependencies. Do not wait for them.
-5. If a contract is wrong, write \`${root}/contracts/<name>.change-request.md\` from \`${skill}/templates/change-request.md\`, adapt locally, and continue. Do not edit the contract.
-6. Append short notes to \`${root}/nodes/${n.id}/log.md\` as you go.
-7. Run the fast check from GOAL.md while you work. The full check runs once, during the review in step 10.
-8. Write \`${root}/nodes/${n.id}/outcome.md\` from \`${skill}/templates/outcome.md\`. Later agents read only this file.
-9. Do not change \`status\` in your brief. Commit everything on your branch with the message "${n.id}: ${n.title}".
-10. ${(n.review || 'fresh') === 'self'
+1. Prove the problem first, if the node fixes one. That covers \`fix\` and \`hotfix\` nodes, and any node that removes a bug, a slow path, a memory or size cost, or a flake. Prove it on the current \`${baseOf(n)}\` before you change any code. For a bug, write the smallest test that fails there. For a cost, run the brief's benchmark there. The cost must exceed the noise, and a profile must place it in the code the node changes. Numbers in the brief are leads, not proof: they may come from an older commit. If the problem does not show, make no code changes. Write the outcome with "Not reproduced" and the evidence, commit only that, skip the pull request, and report not_reproduced=true. Report as proof the command, the commit and the result on each side, or "" for a node that fixes no problem.
+2. If \`${root}/nodes/${n.id}/log.md\` exists, you are resuming. Continue from where it stops.
+3. Do the work in the brief. Edit only the brief's owned paths and \`${root}/nodes/${n.id}/\`. If you must touch another file, keep the change minimal and record it under Deviations in your outcome.
+4. Use only the numbers your brief reserves for migrations, decision records or other numbered files.
+5. Build against stubs for \`behavior\` dependencies. Do not wait for them.
+6. If a contract is wrong, write \`${root}/contracts/<name>.change-request.md\` from \`${skill}/templates/change-request.md\`, adapt locally, and continue. Do not edit the contract.
+7. Append short notes to \`${root}/nodes/${n.id}/log.md\` as you go.
+8. Run the fast check from GOAL.md while you work. The full check runs once, during the review in step 11.
+9. Write \`${root}/nodes/${n.id}/outcome.md\` from \`${skill}/templates/outcome.md\`. Later agents read only this file.
+10. Do not change \`status\` in your brief. Commit everything on your branch with the message "${n.id}: ${n.title}".
+11. ${(n.review || 'fresh') === 'self'
     ? "Review the branch yourself, as step 6 of the pr-author skill describes: read your own diff as a reviewer would, go through pr-review's references/evaluation.md, and run the full checks once. Fix what you find, for at most two rounds. Report review_mode self, review_rounds, review_clean and checks_pass."
     : 'Do not review the branch: a fresh reviewer runs after you. Report review_mode none, review_rounds 0, review_clean false, and checks_pass for the fast check.'}
-11. ${n.ship === 'commit'
+12. ${n.ship === 'commit'
     ? `Open no pull request and do not push to \`${baseOf(n)}\`: the orchestrator squashes your branch into one commit and lands it on \`${baseOf(n)}\`. Report pr as "".`
-    : `Push the branch and open a pull request against \`${baseOf(n)}\` (follow the pr-author skill if it is installed). Link \`${root}/nodes/${n.id}/brief.md\` in the description. Do not merge or approve it. Report its number as pr, or "" if you made no pull request.`}`
+    : `Open a pull request only when the acceptance holds. For a node from step 1, the same proof must also pass on your branch: the test passes, or the measured gain exceeds the noise. If not, push nothing, record the result in the outcome, and report pr as "". Otherwise push the branch and open a pull request against \`${baseOf(n)}\` (follow the pr-author skill if it is installed). Link \`${root}/nodes/${n.id}/brief.md\` in the description. Do not merge or approve it. Report its number as pr, or "" if you made no pull request.`}`
 }
 
 function runWorker(n) {
@@ -133,7 +136,9 @@ const REVIEW = {
 // A worker runs as a subagent and cannot spawn its own reviewer, so fresh reviews start here.
 async function workAndReview(n) {
   const r = await runWorker(n)
-  if (!r || r.already_fulfilled || (n.review || 'fresh') === 'self') return r
+  if (!r || r.already_fulfilled || r.not_reproduced || (n.review || 'fresh') === 'self') return r
+  // A fix whose proof failed on the branch opened no pull request, so there is nothing to review.
+  if (r.proof && !r.acceptance_pass) return r
   const review = await agent(`Review ${r.branch} against ${baseOf(n)} in the current repo with the pr-review skill, in local mode. Do not post anything. Return the verdict, whether the full checks pass, and the findings, sorted into blocking, should fix, nits, and bugs found on the base.`,
     { label: `review:${n.id}`, phase: 'Work', schema: REVIEW })
   if (!review) return r

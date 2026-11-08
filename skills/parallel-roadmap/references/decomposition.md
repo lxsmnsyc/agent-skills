@@ -52,7 +52,7 @@ Pick the one that matches the shape of the work.
 3. **Spike, then build.** Separate finding out from building. The spike is small and runs early.
 4. **Expand, migrate, contract.** For refactors: add the new API next to the old one (one node), migrate callers area by area (one node per area, all parallel), then remove the old API (one node, `hard` on all migrations). This turns a serial refactor into one wide wave.
 5. **Test first.** One node writes the acceptance tests against the contract. Implementation nodes then have a fixed target, and the tests catch drift between parallel implementations.
-6. **Measure, then change.** For performance work: one node builds the measurement and records the baseline, then each optimization is its own node that reports the before and after numbers. Optimizations in different areas run in parallel.
+6. **Measure, then change.** For performance work: one node builds the measurement and records the baseline, then each optimization is its own node that reports the before and after numbers. Optimizations in different areas run in parallel. Base each one on a profile that places the cost in the code it changes. A total such as "10% of time in GC" is not enough. Note the commit the profile came from in the brief's Evidence line. When an earlier node in the roadmap changes the same code, the numbers are stale, and the worker measures again before building.
 7. **Per area.** When the same change has to be made in many places (renames, API migrations, converted data), split by directory.
 
 ## When not to split

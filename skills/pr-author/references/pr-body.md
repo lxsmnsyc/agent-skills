@@ -34,6 +34,8 @@ Depends on #<n>                      <- only for stacked PRs, as the first line
 
 Use the repo's convention, usually `type(scope): summary` in the imperative, under 72 characters. Match the type to the change: `fix` only when there is a bug that the Proof section shows on the base.
 
-## Proof for fixes
+## Proof for fixes and optimizations
+
+For an optimization, the Proof section gives the measured cost on the base and on the branch. Give the noise too, for example the median and MAD over alternating runs. A gain inside the noise is not proof, and such a change gets no pull request.
 
 The Proof section is what lets the reviewer approve quickly. Name the exact command, and the result on each side (exit code, or expected and actual values). The reviewer will run the same command.

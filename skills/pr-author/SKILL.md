@@ -47,6 +47,8 @@ Start from the latest base: `git fetch` first, then `wt.py new <branch> --base o
 
 When building a roadmap node, the node's brief is the spec. Stay inside its owned paths.
 
+**Prove the problem first.** Some changes fix a problem: a bug, a slow path, a memory or size cost, a flake. Such a change starts with proof that the problem exists on the base. That is the smallest test that fails there, or a cost beyond the noise that a profile places in the code you will change. Evidence in a brief, an issue or a planning document is a lead: it may come from an older commit. If the problem does not show, change nothing and report what you measured. Open the pull request only when the same proof passes on the branch.
+
 ### 3. Build it non-blocking
 
 Read `references/non-blocking.md`. The short version:

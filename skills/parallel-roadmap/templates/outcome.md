@@ -2,7 +2,14 @@
 
 ## Built
 
-- <What exists now, with paths and public names. Or "Already fulfilled by <commit, PR or node>", with the evidence below.>
+- <What exists now, with paths and public names. Or "Already fulfilled by <commit, PR or node>", with the evidence below. Or "Not reproduced", when the problem the node fixes does not show on the target.>
+
+## Proof
+
+Nodes that fix a problem (a bug, a slow path, a memory or size cost, a flake).
+
+- base: <commit, command, result: the failing test, or the measured cost against the noise and where a profile places it>
+- branch: <the same command on the branch and its result, or "not built" when the problem did not reproduce>
 
 ## Result
 
