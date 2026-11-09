@@ -12,7 +12,7 @@ Skills for Claude Code and other agents that support the Agent Skills format.
 - [`changesets`](skills/changesets/SKILL.md): write the changeset for a change. The bump level follows whether the thing existed before; `major` only with the maintainer's approval.
 - [`repo-setup`](skills/repo-setup/SKILL.md): set up a new or old npm library repo: pnpm, changesets, tsdown, vitest, oxlint and oxfmt. Adds a check workflow and a release workflow with trusted publishing. Decides where property, model or oracle tests pay off, and finds implicit state machines.
 - [`security-fix`](skills/security-fix/SKILL.md): fix a vulnerability on a branch that is never pushed. The fix goes public when CI publishes the release, so npm provenance stays.
-- [`ts-style`](skills/ts-style/SKILL.md): style rules for `.ts` and `.js` code. for-of loops instead of callback Array methods, function declarations, and the repo's linter after each edit.
+- [`ts-style`](skills/ts-style/SKILL.md): style rules for `.ts` and `.js` code. for-of loops instead of callback Array methods, function declarations named with a verb, and the repo's linter after each edit.
 - [`plain-writing`](skills/plain-writing/SKILL.md): rules for short, exact prose that people and agents can both scan, with a checker script and an optional hook for commits and PRs.
 - [`ui-style`](skills/ui-style/SKILL.md): design rules for interfaces. Let the layout explain instead of secondary labels and descriptions.
 

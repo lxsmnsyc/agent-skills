@@ -1,6 +1,6 @@
 ---
 name: ts-style
-description: Style rules for this user's TypeScript code, and for `.js` files too. Write for-of loops instead of callback-taking Array methods (map, filter, forEach, reduce, some, every, find, flatMap and the like), write named functions as function declarations with action names (never `<noun>Of`), comment the steps inside a function rather than the function itself, and run the repo's linter and formatter after editing. Use this skill whenever writing, editing or reviewing TypeScript, `.ts`, `.tsx`, `.js` or `.jsx` code, unless the repo's own style rules say otherwise.
+description: Style rules for this user's TypeScript code, and for `.js` files too. Write for-of loops instead of callback-taking Array methods (map, filter, forEach, reduce, some, every, find, flatMap and the like), write named functions as function declarations whose names start with a verb (components exempt, never `<noun>Of`), comment the steps inside a function rather than the function itself, and run the repo's linter and formatter after editing. Use this skill whenever writing, editing or reviewing TypeScript, `.ts`, `.tsx`, `.js` or `.jsx` code, unless the repo's own style rules say otherwise.
 ---
 
 # TypeScript style
@@ -100,7 +100,21 @@ function applyDamage(battle: Battle, hit: Hit): void {
 
 ## Naming
 
-Do not name functions `<noun>Of` (`keyOf`, `fileOf`, `ownerOf`). Name the action. Use `getKey(unit)` for a plain read, or a verb that says the work, such as `findFile`, `readFile` or `createKey`.
+Start every function name with a verb. A call is an action, so the name says what the call does: `getKey`, `findFile`, `createUnit`, `applyDamage`, `isAlive`, `hasShield`.
+
+```ts
+// Before
+function unitName(unit: Unit): string { ... }
+function damage(unit: Unit, amount: number): void { ... }
+
+// After
+function getUnitName(unit: Unit): string { ... }
+function applyDamage(unit: Unit, amount: number): void { ... }
+```
+
+- Do not name functions `<noun>Of` (`keyOf`, `fileOf`, `ownerOf`). Use `getKey(unit)` for a plain read, or a verb that says the work, such as `findFile`, `readFile` or `createKey`.
+- The rule covers methods and arrow functions held in a variable too.
+- Components are exempt. A Solid or React component is named for what it renders, in PascalCase: `UnitCard`, not `renderUnitCard`. Classes and types stay nouns.
 
 ## Lint and format
 
@@ -108,4 +122,4 @@ Most repos of this user extend `@lxsmnsyc/oxlint-config` and format with oxfmt. 
 
 ## Before finishing
 
-Search the lines your change added for callback Array methods, for example with `git diff -U0 | grep -E '^\+.*\.(map|filter|forEach|reduce|some|every|find|findIndex|flatMap)\('`. Turn each hit outside tests and the "What stays" list into a loop. Search the same lines for `function \w+Of(` and rename each hit.
+Search the lines your change added for callback Array methods, for example with `git diff -U0 | grep -E '^\+.*\.(map|filter|forEach|reduce|some|every|find|findIndex|flatMap)\('`. Turn each hit outside tests and the "What stays" list into a loop. Search the same lines for `function \w+Of(` and rename each hit. Read the names of the functions the change added, and rename any that does not start with a verb, unless it is a component.
