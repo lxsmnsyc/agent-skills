@@ -31,6 +31,8 @@ Run `capacity.py`. It weighs free memory, CPU load, free disk and existing workt
 
 Never work directly in the user's main checkout when it has uncommitted changes. Those are theirs.
 
+Never run `git stash` when working with worktrees. All worktrees of a repo share one stash list. A stash made in one worktree can be popped or dropped in another, by you or by another agent. The changes then land on the wrong branch or are lost. To set work aside, commit it on its branch (a `wip:` commit you amend or squash later), or open a new worktree for the other task.
+
 A new worktree has none of the main checkout's gitignored files, such as `.env`, so tests and dev servers that need them fail there. `wt.py new` copies the gitignored files that `.worktreeinclude` names (gitignore syntax, at the repo root) and lists them under `copied`. Claude Code does the same for the worktrees it creates. When checks need a gitignored file and the repo has no `.worktreeinclude`, tell the user and suggest adding one with that file's pattern.
 
 Each worktree has an index (shown by `wt.py new` and `wt.py list`). When a dev server or test database needs a port, derive it from the index (for example `3000 + 10 * index`) so parallel worktrees do not collide.
