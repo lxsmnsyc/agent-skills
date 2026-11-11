@@ -632,6 +632,9 @@ def through_story(preds, node, nodes):
     """Replace children of other stories with the story: their code reaches other work when it merges."""
     out = set()
     for p in preds:
+        # A story still lists its dropped children, which live() has removed from `nodes`.
+        if p not in nodes:
+            continue
         s = story_of(nodes[p], nodes)
         if s and on_story_branch(nodes[p], nodes) and node["story"] != s["id"] and node["id"] != s["id"]:
             out.add(s["id"])

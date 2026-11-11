@@ -442,6 +442,15 @@ class PlanTest(unittest.TestCase):
         plan.apply_batches(nodes, self.root, plan.land_settings(self.root))
         self.assertIsNone(nodes["f"]["batch"])
 
+    def test_story_with_dropped_child_schedules(self):
+        node(self.root, "st", size="M", owns="[src/s/**]", type="story")
+        node(self.root, "a", size="M", owns="[src/s/a/**]", story="st")
+        node(self.root, "b", size="M", owns="[src/s/b/**]", story="st", status="dropped")
+        nodes, contracts, _ = self.load()
+        eff = plan.effective_priority(nodes, contracts)
+        self.assertNotIn("b", eff)
+        self.assertEqual(plan.start_preds(nodes["st"], plan.live(nodes), contracts), {"a"})
+
     def test_cut_is_due_by_count_idle_or_waiting(self):
         (self.root / "GOAL.md").write_text("---\nmerge:\n  mode: auto\nland:\n  every: 2\n---\n# G\n")
         node(self.root, "a", size="M", owns="[src/a/**]", status="done")
