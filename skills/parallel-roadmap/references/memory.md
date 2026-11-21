@@ -52,7 +52,7 @@ Sort by how long it should live:
 
 - **Lasting rules about the code** go into a nested `CLAUDE.md` next to that code, for example `server/store/CLAUDE.md`: "Migrations must be idempotent, because restore replays them." Claude Code loads a nested `CLAUDE.md` when an agent works on files in that folder, so the rule reaches exactly the agents that need it, with no search. Every worktree gets it because it is committed.
 - **Decisions** go into the repo's decision records (ADRs or similar). During the roadmap, a draft can live in the node folder; the curator moves it.
-- **Roadmap state** (goal, contracts, nodes, reviews) lives in `<root>`. A finished node's folder is archived once nothing open depends on it (curator step 9), so a roadmap that runs for months keeps only the work in flight and its direct inputs.
+- **Roadmap state** (goal, contracts, nodes, reviews) lives in `<root>`. A done node's folder is archived once no scheduled open node depends on it, and a dropped node's folder at once (curator step 9). A roadmap that runs for months keeps only the work in flight and its direct inputs.
 - **Calibration** lives in `<roadmaps-dir>/CALIBRATION.md` and is shared by all roadmaps in the repo.
 
 Rules for nested `CLAUDE.md` files:
@@ -76,7 +76,7 @@ Run one curator pass at each checkpoint (after a wave, or after a few nodes in r
 6. Updates downstream briefs whose upstream outcome deviated from the plan, before those nodes start. An experiment whose result is `missed`, `killed` or `inconclusive` stops its dependents: show the user the result and offer a new goal debate with it as a fact, instead of building on a hypothesis that did not hold.
 7. Deletes or corrects memory that the new outcomes proved wrong. Check that each rule still matches the code it describes.
 8. Appends calibration entries.
-9. Archives finished nodes: `plan.py <root> archive` lists done nodes that no open node depends on. Once their learnings, decisions and calibration are recorded, `--apply` removes their folders and adds one line each to `archive.md` (title, pull request, milestone). `plan.py` still counts them as done, and their full text stays in git history. The first time in a roadmap, show the user the list before applying. The same command lists frozen contracts that no open node uses; remove them when the code is the better reference.
+9. Archives resolved nodes: run `plan.py <root> archive --apply` on every pass, after steps 1 to 8 recorded their learnings, decisions and calibration. Do not ask first and do not skip it. It removes the folders of dropped nodes and of done nodes that no scheduled open node depends on. Parked `later` nodes do not hold them. Each one gets a line in `archive.md` (title, status, pull request, milestone). `plan.py` still counts them as done or dropped, and their full text stays in git history. `plan.py status` lists any resolved node still in `nodes/`, so a missed pass shows at the next session start. The same command lists frozen contracts that no open node uses. Remove them when the code is the better reference.
 10. Lists nodes whose priority looks wrong after this wave, and inbox items worth a node, for the user to decide.
 11. Runs `plan.py <root> status` and reads the token line. When spend passes 80% of `budget:` or the forecast goes over, tell the user and offer a goal debate with `--roadmap` to cut scope.
 12. Writes `reviews/wave-<n>.md`: what landed, what changed in the plan, what it learned, and the current must line (the wave by which all must work is placed) and the progress of each milestone.

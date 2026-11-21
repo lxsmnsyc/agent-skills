@@ -369,6 +369,21 @@ class PlanTest(unittest.TestCase):
         self.assertFalse((self.root / "nodes/a").exists())
         self.assertIn("- a: a (done, #57, milestone q1)", (self.root / "archive.md").read_text())
 
+    def test_archive_dropped_nodes_and_ignore_parked_dependents(self):
+        node(self.root, "gone", size="M", owns="[g/**]", status="dropped")
+        node(self.root, "base", size="M", owns="[b/**]", status="done")
+        node(self.root, "parked", size="M", owns="[p/**]", priority="later",
+             depends_on=dep("base", "hard", why="x"))
+        nodes, contracts, _ = self.load()
+        ids, _ = plan.archive_candidates(nodes, contracts)
+        self.assertEqual(ids, ["base", "gone"])
+        plan.apply_archive(self.root, nodes, ids)
+        self.assertIn("- gone: gone (dropped)", (self.root / "archive.md").read_text())
+        nodes, contracts, (errors, _) = self.load()
+        self.assertEqual(errors, [])
+        self.assertEqual(nodes["gone"]["status"], "dropped")
+        self.assertEqual(plan.archive_candidates(nodes, contracts)[0], [])
+
     def test_archived_nodes_still_satisfy_dependencies(self):
         (self.root / "archive.md").write_text("# Archive\n\n- old: Old work (done, #12)\n")
         node(self.root, "new", size="M", owns="[n/**]", depends_on=dep("old", "hard", why="x"))

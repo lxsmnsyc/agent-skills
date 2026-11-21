@@ -20,7 +20,7 @@ Usage:
   plan.py <root> verify [<id>]     # run the verify command of <id>, or of every todo node
   plan.py <root> refine            # outline nodes close enough to break into briefs now
   plan.py <root> overview          # readable summary of the plan, grouped by milestone
-  plan.py <root> archive [--apply]   # done nodes nothing open needs: remove folders, list in archive.md
+  plan.py <root> archive [--apply]   # done and dropped nodes nothing open needs: remove folders, list in archive.md
   plan.py <root> cut [--checks-pass] # batch branches due to be cut into their targets, exit 0 = one is due
   plan.py <root> can-merge <id> --review-clean --checks-pass [--proof] [--fresh-review] --files - < changed.txt
                                    # may the orchestrator merge this node's PR (or land its commit) itself? exit 0 = yes
@@ -158,7 +158,7 @@ def _command(v):
 
 
 ARCHIVE_LINE = re.compile(
-    r"^- (?P<id>[\w.-]+): (?P<title>.*?) \((?P<status>done|released)"
+    r"^- (?P<id>[\w.-]+): (?P<title>.*?) \((?P<status>done|released|dropped)"
     r"(?:, (?P<ref>(?!\d+ tokens)[^,)]+?))?(?:, (?P<spent>\d+) tokens)?"
     r"(?:, milestone (?P<milestone>[^)]+))?\)\s*$")
 
@@ -176,7 +176,7 @@ def read_archive(root):
 
 
 def archived_node(root, nid, entry):
-    """A done node whose folder was archived: enough for dependencies and milestones."""
+    """A resolved node whose folder was archived: enough for dependencies and milestones."""
     return {
         "id": nid, "dir": root / "nodes" / nid, "dirname": nid, "title": entry["title"],
         "status": entry["status"], "priority": "should", "size": "S", "model": None,
@@ -1437,18 +1437,23 @@ def can_merge(nid, nodes, policy, review_clean, checks_pass, proof, files, ci_gu
 
 
 def archive_candidates(nodes, contracts):
-    """Done nodes nothing open still needs, and frozen contracts no open node uses."""
+    """Resolved nodes nothing open still needs, and frozen contracts no open node uses.
+
+    Dropped nodes always qualify. A done node stays while a scheduled open node depends on it,
+    because that node loads its outcome. Parked (`later`) nodes do not hold anything: when one
+    is picked up, the code is the reference.
+    """
     lv = live(nodes)
     needed = set()
     for k, n in lv.items():
-        if n["status"] in DONE:
+        if n["status"] in DONE or n["priority"] == "later":
             continue
         for d in n["deps"]:
             if isinstance(d, dict) and d.get("on"):
                 needed.add(d["on"])
         needed |= start_preds(n, lv, contracts)
-    ready_nodes = sorted(k for k, n in lv.items()
-                         if n["status"] in DONE and not n["archived"] and k not in needed)
+    ready_nodes = sorted(k for k, n in nodes.items() if not n["archived"] and (
+        n["status"] == "dropped" or (n["status"] in DONE and k not in needed)))
     used = set()
     for n in lv.values():
         if n["status"] in DONE:
@@ -1693,7 +1698,7 @@ def main():
         for k in ids:
             print(("archived " if args.apply else "would archive ") + archive_line(nodes[k])[2:])
         if not ids:
-            print("no done nodes to archive")
+            print("no resolved nodes to archive")
         if unused:
             print("contracts no open node uses (remove or keep as reference): " + ", ".join(unused))
         if args.apply and ids:
@@ -1884,6 +1889,11 @@ def main():
             if info["nodes"]:
                 print(f"{b}: {len(info['nodes'])} node(s) not yet cut into {info['into']} "
                       f"(cut every {land['every']}; see plan.py cut)")
+        stale, _ = archive_candidates(nodes, contracts)
+        if stale:
+            print(f"archive: {len(stale)} resolved node(s) still in nodes/ "
+                  f"({', '.join(stale[:5])}{', ...' if len(stale) > 5 else ''}); "
+                  "run plan.py <root> archive --apply")
     print_schedule(s, nodes)
 
 

@@ -39,7 +39,7 @@ A roadmap lives in the repo, so it is versioned with the code and survives devic
   nodes/<id>/log.md           # worker's private notes, never read by other nodes
   nodes/<id>/outcome.md       # worker's distilled result, the only thing that flows downstream
   reviews/                    # premortem, adversarial review, wave reports
-  archive.md                  # one line per done node whose folder was removed (plan.py archive)
+  archive.md                  # one line per done or dropped node whose folder was removed (plan.py archive)
 ```
 
 Templates for each file are in `templates/`. Copy them; do not invent new fields, because `scripts/plan.py` reads the frontmatter.
@@ -64,7 +64,7 @@ python3 <skill>/scripts/plan.py <root> verify [<id>]   # run verify commands; fi
 python3 <skill>/scripts/plan.py <root> refine          # outline nodes close enough to break into full briefs now
 python3 <skill>/scripts/plan.py <root> overview        # readable summary for the user, grouped by milestone
 python3 <skill>/scripts/plan.py <root> can-merge <id> ...  # may the orchestrator merge this PR without the user?
-python3 <skill>/scripts/plan.py <root> archive [--apply]   # remove done nodes nothing open still needs
+python3 <skill>/scripts/plan.py <root> archive [--apply]   # remove done and dropped nodes nothing open still needs
 python3 <skill>/scripts/plan.py <root> cut [--checks-pass] # is the batch due to be cut into the main branch, and who may do it?
 ```
 
@@ -222,6 +222,7 @@ Read `references/memory.md`. One curator pass per wave:
 - Resolve contract change requests: accept (bump the version, list affected nodes) or reject (tell the requesting node to adapt).
 - Update the briefs of downstream nodes whose upstream outcome deviated from the plan.
 - Record estimate against actual in `<roadmaps-dir>/CALIBRATION.md`.
+- Archive resolved nodes with `plan.py <root> archive --apply`. Every pass, without asking. Done nodes stay only while a scheduled open node depends on them, and dropped nodes go at once.
 
 Write a short report to `reviews/wave-<n>.md` and tell the user what changed.
 

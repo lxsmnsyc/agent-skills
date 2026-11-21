@@ -129,7 +129,7 @@ Waves printed by `plan.py status` are a forecast in both modes. The decision to 
 4. Set each one to `status: active` and commit that: on the batch branch in batch mode, on the main branch in direct mode. For a story's first child, also create the story branch and set the story `active` (see "Stories"). Keep the commit to the brief files only.
 5. Spawn the workers in a single message so they run at the same time (see "Spawning a worker"). In sequential mode, spawn only the first one.
 6. When a worker returns, act on its reply (see "Merging and verification"). In `self` mode the worker has already reviewed and checked it. In `fresh` mode, spawn the reviewer.
-7. When the pull request merges or the commit lands (on the batch, in batch mode), set `status: done` and `spent:`. Spent is the tokens of the worker, the reviewer and any fix rounds, added up from their usage reports. Run the curator at checkpoints. At each checkpoint, run `plan.py cut` and cut the batch when it is due (see "Batches").
+7. When the pull request merges or the commit lands (on the batch, in batch mode), set `status: done` and `spent:`. Spent is the tokens of the worker, the reviewer and any fix rounds, added up from their usage reports. Run the curator at checkpoints, which ends with `plan.py <root> archive --apply`. At each checkpoint, run `plan.py cut` and cut the batch when it is due (see "Batches").
 8. Stop at gates (see "Gates"). At checkpoints, end the session (see "Keeping the orchestrator's context small"). Otherwise go to step 1.
 
 ## Keeping the orchestrator's context small
@@ -295,4 +295,4 @@ Workflow({ scriptPath: "<skill>/scripts/wave.workflow.js",
 // sequential mode: add sequential: true, and isolation: "none" to use the current checkout
 ```
 
-It returns each worker's report (branch, pull request or empty for `ship: commit` nodes, status) and the curator's proposals. The orchestrator lands commits and merges pull requests afterwards.
+It returns each worker's report (branch, pull request or empty for `ship: commit` nodes, status) and the curator's proposals. The orchestrator lands commits and merges pull requests afterwards, applies the proposals, sets statuses, and then runs `plan.py <root> archive --apply`. The curator agent in the Workflow cannot remove folders, so this step is the orchestrator's.

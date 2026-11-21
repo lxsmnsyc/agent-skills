@@ -170,7 +170,7 @@ const curation = await agent(`You are the curator for the roadmap in \`${root}\`
 Worker reports:
 ${JSON.stringify(done, null, 2)}
 
-Read \`${skill}/references/memory.md\` (the curator section) and follow it, with one difference: do not edit any files. Return proposals only; the orchestrator applies them after merging.
+Read \`${skill}/references/memory.md\` (the curator section) and follow it, with one difference: do not edit any files. Return proposals only; the orchestrator applies them after merging, then runs \`plan.py ${root} archive --apply\` itself.
 
 For each branch, read \`${root}/nodes/<id>/outcome.md\` and any \`${root}/contracts/*.change-request.md\` it added. Then return:
 - learnings: lasting rules about the code worth a nested CLAUDE.md, with the folder they apply to. Mark the ones a test, type or lint rule could enforce instead.
