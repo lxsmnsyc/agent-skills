@@ -40,12 +40,13 @@ from pathlib import Path
 SIZE_POINTS = {"S": 1, "M": 2, "L": 3, "XL": 5}
 DEFAULT_MODEL = {"S": "sonnet", "M": "sonnet", "L": "opus", "XL": "opus"}
 # Node types that use opus at every size. Sonnet docs drafts failed review.
-OPUS_TYPES = {"experiment", "docs"}
+# Diagnose nodes reason over a bug with an unknown cause.
+OPUS_TYPES = {"experiment", "docs", "diagnose"}
 KINDS = {"contract", "behavior", "hard"}
 STATUSES = {"todo", "active", "done", "released", "dropped"}
 DONE = {"done", "released"}
 TYPES = {"feature", "fix", "hotfix", "refactor", "docs", "chore", "release", "spike", "contract",
-         "experiment", "story"}
+         "experiment", "story", "diagnose"}
 # must: needed for the goal now. should: important, but the goal can ship without it.
 # could: worth doing when capacity is free. later: parked, not scheduled.
 PRIORITIES = {"must": 0, "should": 1, "could": 2, "later": 3}
@@ -608,6 +609,28 @@ def live(nodes):
     return {k: n for k, n in nodes.items() if n["status"] != "dropped"}
 
 
+# Diagnose verdicts that mean a fix still has to be built.
+FIX_VERDICTS = {"fix-small", "fix-large", "no-seam"}
+
+
+def diagnosis_verdict(n):
+    """The `- verdict:` line of a diagnose node's outcome, or None."""
+    outcome = n["dir"] / "outcome.md" if n.get("dir") else None
+    if n["type"] != "diagnose" or not outcome or not outcome.exists():
+        return None
+    m = re.search(r"^- verdict:\s*`?([a-z-]+)", outcome.read_text(), re.M)
+    return m.group(1) if m else None
+
+
+def awaiting_fix(nodes):
+    """Done diagnose nodes that found a cause, with no node depending on them yet."""
+    lv = live(nodes)
+    depended = {d["on"] for n in lv.values() for d in n["deps"] if isinstance(d, dict) and d.get("on")}
+    return sorted(k for k, n in lv.items() if n["type"] == "diagnose" and n["status"] in DONE
+                  and not n.get("archived") and k not in depended
+                  and diagnosis_verdict(n) in FIX_VERDICTS)
+
+
 def dep_preds(node, nodes, contracts):
     """Nodes named by the node's own dependencies that must finish before it starts."""
     preds = set()
@@ -839,6 +862,9 @@ def check(nodes, contracts, load_errors, policy=None, milestones=None, release=N
             if n.get("target_eff") and n["target_eff"] not in known and not on_story_branch(n, nodes):
                 warnings.append(f"node {nid}: targets '{n['target_eff']}', which is not a branch "
                                 f"in the policy ({', '.join(sorted(known))})")
+    for nid in awaiting_fix(nodes):
+        warnings.append(f"node {nid}: the diagnosis found a cause ({diagnosis_verdict(nodes[nid])}); "
+                        f"add the fix node with a `hard` dependency on it")
     for nid, n in live(nodes).items():
         if n["type"] == "experiment" and not n["outline"] and n["status"] not in DONE and not n["hypothesis"]:
             warnings.append(f"node {nid}: an experiment needs `hypothesis:`, the debate.md (or section) "
@@ -1333,11 +1359,14 @@ def setting_warnings(root):
 def review_mode(n, setting="auto"):
     """Who reviews a node's pull request: `fresh` (a new agent) or `self` (the worker).
 
-    With `auto`, S nodes and docs or chore nodes are self-reviewed. Gated nodes, contract
+    With `auto`, S nodes, docs or chore nodes and diagnose nodes are self-reviewed. Gated nodes, contract
     providers, releases, hotfixes and every other node get a fresh reviewer.
     """
     if setting in ("fresh", "self"):
         return setting
+    # A diagnose node ships a diagnosis, not code. Its proof is the loop, so no reviewer.
+    if n["type"] == "diagnose":
+        return "self"
     if n["gate"] or n["provides"] or n["type"] in ("release", "hotfix", "experiment"):
         return "fresh"
     if n["size"] == "S" or n["type"] in ("docs", "chore"):
@@ -1452,6 +1481,8 @@ def archive_candidates(nodes, contracts):
             if isinstance(d, dict) and d.get("on"):
                 needed.add(d["on"])
         needed |= start_preds(n, lv, contracts)
+    # A diagnosis waiting for its fix node keeps its outcome and reproduction.
+    needed.update(awaiting_fix(nodes))
     ready_nodes = sorted(k for k, n in nodes.items() if not n["archived"] and (
         n["status"] == "dropped" or (n["status"] in DONE and k not in needed)))
     used = set()
@@ -1490,10 +1521,12 @@ def apply_archive(root, nodes, ids):
 
 BRANCH_PREFIX = {"feature": "feat", "fix": "fix", "hotfix": "hotfix", "refactor": "refactor",
                  "docs": "docs", "chore": "chore", "release": "release", "spike": "spike",
-                 "contract": "feat", "experiment": "experiment", "story": "feat"}
+                 "contract": "feat", "experiment": "experiment", "story": "feat",
+                 "diagnose": "diagnose"}
 TITLE_PREFIX = {"feature": "feat", "fix": "fix", "hotfix": "fix", "refactor": "refactor",
                 "docs": "docs", "chore": "chore", "release": "chore", "spike": "chore",
-                "contract": "feat", "experiment": "chore", "story": "feat"}
+                "contract": "feat", "experiment": "chore", "story": "feat",
+                "diagnose": "chore"}
 
 
 def branch_name(n):

@@ -37,7 +37,7 @@ Size is about how hard the node is for an agent to finish in one session without
 
 ## What the scores trigger
 
-- **High uncertainty**: put a spike node first. The spike answers one question, has a time box, and writes its answer to `outcome.md`. The build node has a `hard` dependency on the spike. A spike can also produce a contract.
+- **High uncertainty**: put a spike node first. The spike answers one question, has a time box, and writes its answer to `outcome.md`. The build node has a `hard` dependency on the spike. A spike can also produce a contract. For a bug whose cause is unknown, the spike is a `diagnose` node (root-cause skill).
 - **High coupling**: look for a seam. Usually a contract can replace several edges.
 - **High blast radius**: move the shared change into its own early node, ideally in the contract wave, so later nodes only append.
 - **Low verifiability**: add a node that writes the acceptance test or the benchmark harness first, or set `gate: true` so a human checks it.

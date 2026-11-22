@@ -179,11 +179,29 @@ A passing `verify` command is a signal, not proof. Read the code before closing 
 
 Some nodes fix a problem: a bug, a slow path, a memory or size cost, a flake. Such a node is worth building only if the problem exists on its target now. Briefs get their evidence at planning time, and the code moves after that. An earlier node can remove the cost, or the profile that pointed at it was never specific. A node built on a stale premise costs a full session and a pull request that the maintainer then closes.
 
-- **Planning**: the brief's Evidence line names the test, profile or numbers and the commit they came from. When there is none, or when the evidence is only an estimate, put a measuring step or spike first (see "Measure, then change" in `references/decomposition.md`).
+- **Planning**: the brief's Evidence line names the test, profile or numbers and the commit they came from. When there is none, or when the evidence is only an estimate, put a measuring step or spike first (see "Measure, then change" in `references/decomposition.md`). For a bug whose cause is unknown, that first node is a `diagnose` node.
 - **Inside the worker**: before changing code, the worker proves the problem on the current target. That is a test that fails there, or a cost beyond the noise that a profile places in the changed code. If it does not show, the worker writes a "Not reproduced" outcome, makes no code changes and opens no pull request.
 - **Before the pull request**: the same proof must pass on the branch. A fix whose test still fails, or an optimization whose gain stays within the noise, opens no pull request. The worker records the result in the outcome and reports it.
 
-When a worker reports "not reproduced" or a missed proof, do not spawn a reviewer. Show the user the evidence and propose dropping the node (`status: dropped`, the outcome says why) or rewriting its brief around the real cause. Dropping and rewriting are the user's decisions. Keep the branch until they decide.
+When a worker reports "not reproduced" or a missed proof, do not spawn a reviewer. Show the user the evidence and propose one of three: drop the node (`status: dropped`, the outcome says why), rewrite its brief around the real cause when it is known, or add a `diagnose` node when the symptom still shows somewhere (a report, production, another input) but its cause is unknown. These are the user's decisions. Keep the branch until they decide.
+
+## Diagnose nodes
+
+A `diagnose` node runs the root-cause skill on a bug whose cause is unknown. Its brief's Goal holds the symptom, quoted exactly, and its Evidence line holds where it was seen. It owns only `nodes/<id>/`. Its output is the Diagnosis section of `outcome.md` and a reproduction in `nodes/<id>/repro/`. The reproduction stays out of the test suite, because a failing test there breaks every check.
+
+- `plan.py` gives it `opus`, a self review (its proof is the loop, not a diff), and a `diagnose/<id>` branch. It lands like any other node, usually as one commit on the batch.
+- The worker cannot spawn agents, so it probes hypotheses one at a time. When it reports three or more hypotheses whose probes are slow and touch different code, the orchestrator may spawn one probe agent per hypothesis, each in its own worktree with only the loop command and its prediction, and send the results to the worker with SendMessage, as it does with review findings.
+- **A vulnerability** ends the node with nothing written or committed. The worker reports it in its reply only. Tell the user, mark the node `dropped` with "reported privately" as the reason, and hand the fix to the security-fix skill.
+
+When it closes, read the verdict:
+
+| Verdict | Next |
+| --- | --- |
+| `fix-small`, `fix-large` | Add the fix node with the Change procedure. Its Evidence line is the diagnosis's Evidence part, its owned paths cover the recommended option, and it has a `hard` dependency on the diagnose node. The fix worker moves the reproduction into the suite as its failing test. |
+| `no-seam` | The fix node as above, plus a refactor node or inbox entry for the missing seam. |
+| `no-loop`, `not-a-bug` | Show the user the evidence. Nothing is built. |
+
+`plan.py check` warns about a done diagnose node with a fix verdict and no node that depends on it, and `archive` keeps such a node until its fix node exists, so the diagnosis is not archived before it is used.
 
 ## Merging and verification
 

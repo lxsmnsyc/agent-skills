@@ -3,7 +3,7 @@ id: <id, same as the folder name>
 title: <short title>
 status: todo            # todo | active | done | released | dropped (only the orchestrator changes this)
 priority: should        # must (needed now) | should (important, can ship without) | could (when capacity is free) | later (parked)
-type: feature           # feature | fix | hotfix | refactor | docs | chore | release | spike | contract | experiment | story
+type: feature           # feature | fix | hotfix | refactor | docs | chore | release | spike | contract | experiment | diagnose | story
 story:                  # the story this node is part of. Its pull request targets the story branch. A child with empty priority or milestone takes them from the story
 early: false            # story children only: lands on the parent branch before the story, e.g. a hot file split or a fix other work needs
 outline: false          # true for far-off work that is not broken into a brief yet: goal, priority, rough deps and size only
@@ -45,7 +45,7 @@ depends_on:
 <Only what the worker cannot get from GOAL.md, the contracts and dependency outcomes. Link code and documents (L3) instead of pasting them.>
 
 - Source: <link to the proposal, ADR or paragraph this came from>
-- Evidence: <for a node that fixes a problem: the failing test, profile or numbers that show it, and the commit they were taken at>
+- Evidence: <for a node that fixes a problem: the failing test, profile or numbers that show it, and the commit they were taken at. For a fix that follows a diagnose node: the Evidence part of its outcome. For a diagnose node: the symptom, quoted exactly, and where it was seen>
 
 ## Steps
 

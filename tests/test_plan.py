@@ -59,6 +59,31 @@ class PlanTest(unittest.TestCase):
         self.assertEqual(plan.review_mode(nodes["ok"], "auto"), "fresh")
         self.assertEqual(plan.branch_name(nodes["ok"]), "experiment/ok")
 
+    def test_diagnose_node_waits_for_its_fix_node(self):
+        node(self.root, "diag", size="M", owns="[nodes/diag/**]", type="diagnose", status="done")
+        (self.root / "nodes/diag/outcome.md").write_text("# Outcome\n\n## Diagnosis\n\n- verdict: fix-small\n")
+        nodes, contracts, (errors, warnings) = self.load()
+        self.assertEqual(errors, [])
+        self.assertEqual(plan.model_for(nodes["diag"]), "opus")
+        self.assertEqual(plan.review_mode(nodes["diag"], "auto"), "self")
+        self.assertEqual(plan.branch_name(nodes["diag"]), "diagnose/diag")
+        self.assertTrue(any("diag: the diagnosis found a cause (fix-small)" in w for w in warnings))
+        # Not archived while the fix node is missing, because its outcome is the fix node's evidence.
+        self.assertEqual(plan.archive_candidates(nodes, contracts)[0], [])
+
+        node(self.root, "fix", size="S", owns="[src/cart/**]", type="fix",
+             depends_on=dep("diag", "hard", why="the diagnosis is the evidence"))
+        nodes, contracts, (_, warnings) = self.load()
+        self.assertFalse(any("diagnosis found a cause" in w for w in warnings))
+        self.assertEqual(plan.archive_candidates(nodes, contracts)[0], [])
+
+    def test_diagnose_without_a_cause_needs_no_fix_node(self):
+        node(self.root, "diag", size="M", owns="[nodes/diag/**]", type="diagnose", status="done")
+        (self.root / "nodes/diag/outcome.md").write_text("## Diagnosis\n\n- verdict: not-a-bug\n")
+        nodes, contracts, (_, warnings) = self.load()
+        self.assertFalse(any("diagnosis found a cause" in w for w in warnings))
+        self.assertEqual(plan.archive_candidates(nodes, contracts)[0], ["diag"])
+
     def test_token_spend_against_budget(self):
         (self.root / "GOAL.md").write_text("---\nbudget:\n  tokens: 1000000\n---\n# G\n")
         node(self.root, "a", size="M", owns="[src/a/**]", status="done", spent="400000")

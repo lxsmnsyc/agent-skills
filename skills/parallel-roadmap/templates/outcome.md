@@ -20,6 +20,14 @@ Experiment nodes only.
 - reproduce: <commit, command, seeds, data version or hash, environment>
 - Record a missed or null result in full. It is as useful as a met one.
 
+## Diagnosis
+
+Diagnose nodes only. Fill it in from the root-cause skill's `templates/diagnosis.md` (symptom, loop, hypotheses, cause, evidence, fix options). Never write a vulnerability here: report it to the orchestrator only.
+
+- verdict: <fix-small | fix-large | no-seam | no-loop | not-a-bug>
+- cause: <file:line, since commit>
+- reproduction: <nodes/<id>/repro/..., which the fix node moves into the test suite>
+
 ## Deviations
 
 - <Differences from the brief or contract, and why. "None" if none.>

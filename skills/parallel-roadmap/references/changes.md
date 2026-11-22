@@ -20,7 +20,7 @@ Decide with the user which of these it is:
 - **Scope change**: it changes the outcome itself. Say so plainly, update `GOAL.md` with the user's agreement, and add nodes.
 - **Separate roadmap**: it is its own goal. Note it in the inbox with a pointer, or start a new roadmap folder.
 - **Later**: leave it in the inbox. The curator lists inbox items at each checkpoint, so they are not forgotten.
-- **Bug in finished work**: add a fix node with a `hard` dependency on the node that built it.
+- **Bug in finished work**: when the cause is known and shown by a failing test, add a fix node with a `hard` dependency on the node that built it. When the cause is unknown, add a `diagnose` node first, and the fix node after its verdict (see "Diagnose nodes" in `references/orchestration.md`).
 
 Then set the priority. Ask the user one question: "Is the goal incomplete without this?" Yes means `must`. "It makes the goal much better" means `should`. "Nice to have" means `could`. "Not now" means `later`, which keeps it in the plan without scheduling it.
 

@@ -69,7 +69,8 @@ A vulnerability is the exception. Do not open a fix PR, an issue or an inbox ent
 1. **Confirm it on the base.** Write the smallest failing test. Run it on the base with `repro.py` from pr-review, or in a worktree of the base. A bug you cannot show on the base is not ready for a fix PR.
 2. **Decide.**
    - **The cause is clear and the fix is small**: fix it in its own PR. `wt.py new fix/<slug> --base <base>`, add the failing test, fix, check, self-review, open the PR against the branch the policy gives for a fix (or for a hotfix, when the bug is in released code and cannot wait for the next release). It ships on its own, without waiting for your feature.
-   - **The cause is unclear or the fix is large**: do not guess. Write an issue (or a roadmap inbox entry) with the failing test and what you found, and tell the user.
+   - **The cause is unclear**: do not guess. Find it with the root-cause skill, which returns a diagnosis with the cause, the regression test and a verdict. A `fix-small` verdict comes back here as a fix PR. In a roadmap, add a `diagnose` node instead of running it inside your node.
+   - **The fix is large**: write an issue (or a roadmap inbox entry) with the failing test and what you found, and tell the user.
 3. **Your feature branch.**
    - **It does not need the fix**: leave the fix out of the feature branch entirely. The two PRs merge in either order.
    - **It is blocked by the bug**: stack it. Rebase the feature branch onto the fix branch, open the feature PR against the fix branch or the base, and write "Depends on #<fix PR>" at the top of its description. After the fix merges, rebase onto the base. GitHub retargets a PR when its base branch is deleted after merge.
