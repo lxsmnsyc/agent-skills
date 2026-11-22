@@ -51,6 +51,19 @@ class PrReviewTest(unittest.TestCase):
         info = json.loads(out.stdout)
         self.assertEqual(info["type_hint"], "fix")
         self.assertEqual(sorted(f["path"] for f in info["files"]), ["sum.js", "sum.test.js"])
+        blind = json.loads(script("pr_info.py", "--local", "--base", "main", "--head", "fix/sum", "--blind",
+                                  cwd=self.repo).stdout)
+        self.assertNotIn("files", blind)
+        self.assertEqual(blind["title"], info["title"])
+
+    def test_notes_folder_outside_checkouts_is_cleaned(self):
+        out = self.prepare()
+        notes = Path(out["notes"])
+        self.assertTrue(notes.is_dir())
+        self.assertFalse(str(notes).startswith(out["head"]))
+        (notes / "expectations.md").write_text("- docs/cli.md mentions the flag\n")
+        script("worktrees.py", "cleanup", "--all", cwd=self.repo)
+        self.assertFalse(notes.exists())
 
     def test_hotfix_branch_is_typed_hotfix(self):
         sys.path.insert(0, str(SCRIPTS))
@@ -98,6 +111,75 @@ class PrReviewTest(unittest.TestCase):
         found = json.loads(out.stdout)
         self.assertEqual(found["checks"]["test"], "npm run test")
         self.assertIn("build", found["missing"])
+
+
+class SurfaceTest(unittest.TestCase):
+    """surface.py: mentions outside the diff of what the diff removed or changed."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.repo = Path(self.tmp.name)
+        sh("git init -q -b main && git config user.name T && git config user.email t@example.com", self.repo)
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def write(self, rel, text):
+        p = self.repo / rel
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(text)
+
+    def surface(self):
+        r = script("surface.py", "--base", "main", "--head", "HEAD", "--json", cwd=self.repo)
+        return r.returncode, json.loads(r.stdout)
+
+    def base(self):
+        self.write("src/date.ts", "export function parseDate(s: string) { return new Date(s) }\n"
+                                  "export function formatDate(d: Date) { return d.toISOString() }\n")
+        self.write("src/cli.ts", "if (args.includes('--dry-run')) dry = true\n"
+                                 "throw new Error('missing input file name')\n")
+        self.write("README.md", "Call `parseDate(s)` to read a date.\nPass `--dry-run` to preview.\n"
+                                "See formatDate for output.\n")
+        self.write("CHANGELOG.md", "- added parseDate\n")
+        sh("git add -A && git commit -qm base && git switch -qc feat/x", self.repo)
+
+    def test_rename_and_removed_flag_leave_stale_docs(self):
+        self.base()
+        self.write("src/date.ts", "export function parseDay(s: string) { return new Date(s) }\n"
+                                  "export function formatDate(d: Date, utc = true) { return d.toISOString() }\n")
+        self.write("src/cli.ts", "throw new Error('no input file given')\n")
+        sh("git commit -qam rename", self.repo)
+        code, out = self.surface()
+        self.assertEqual(code, 1)
+        stale = {s["term"]: s for s in out["stale"]}
+        self.assertIn("parseDate", stale)
+        self.assertEqual([m["file"] for m in stale["parseDate"]["mentions"]], ["README.md"])  # changelog skipped
+        self.assertIn("--dry-run", stale)
+        self.assertEqual([c["term"] for c in out["changed"]], ["formatDate"])
+
+    def test_updated_docs_leave_nothing(self):
+        self.base()
+        self.write("src/date.ts", "export function parseDay(s: string) { return new Date(s) }\n"
+                                  "export function formatDate(d: Date) { return d.toISOString() }\n")
+        self.write("README.md", "Call `parseDay(s)` to read a date.\nPass `--dry-run` to preview.\n"
+                                "See formatDate for output.\n")
+        sh("git commit -qam rename", self.repo)
+        code, out = self.surface()
+        self.assertEqual(out["stale"], [], out)
+        self.assertEqual(code, 0)
+
+    def test_missing_changeset(self):
+        self.write(".changeset/config.json", "{}\n")
+        self.write("src/a.ts", "export const alpha = 1\n")
+        sh("git add -A && git commit -qm base && git switch -qc feat/y", self.repo)
+        self.write("src/a.ts", "export const alpha = 2\n")
+        sh("git commit -qam change", self.repo)
+        _, out = self.surface()
+        self.assertTrue(out["changeset_missing"])
+        self.write(".changeset/brave-cats.md", "---\n'x': patch\n---\n\nChange alpha.\n")
+        sh("git add -A && git commit -qm changeset", self.repo)
+        _, out = self.surface()
+        self.assertFalse(out["changeset_missing"])
 
 
 if __name__ == "__main__":

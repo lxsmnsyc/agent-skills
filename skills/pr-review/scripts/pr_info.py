@@ -4,6 +4,7 @@
 Usage:
   pr_info.py <number|url>                     # a GitHub pull request (needs gh)
   pr_info.py --local --base main --head feat  # two local refs, no GitHub needed
+  pr_info.py 42 --blind                       # leave out changed files, for the expectations step
 
 Output: title, body, author, base, head, changed files, a type hint (fix, feature,
 other), linked issues, repo visibility, the maintainer and how it was found, the
@@ -192,12 +193,21 @@ def from_local(base, head):
     }
 
 
+def blind(info):
+    """The facts without the changed files: what the change claims, not what it touched."""
+    out = {k: v for k, v in info.items() if k not in ("files",)}
+    out["roadmap_nodes"] = [{k: v for k, v in n.items() if k != "covers"} for n in info["roadmap_nodes"]]
+    return out
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("pr", nargs="?")
     ap.add_argument("--local", action="store_true")
     ap.add_argument("--base")
     ap.add_argument("--head")
+    ap.add_argument("--blind", action="store_true",
+                    help="leave out the changed files, so expectations are written before seeing the change")
     args = ap.parse_args()
     try:
         if args.local:
@@ -210,6 +220,8 @@ def main():
             info = from_github(args.pr)
     except RuntimeError as e:
         sys.exit(str(e))
+    if args.blind:
+        info = blind(info)
     print(json.dumps(info, indent=2))
 
 

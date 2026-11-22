@@ -9,8 +9,9 @@ Usage:
   worktrees.py cleanup <name>                     # remove both worktrees
   worktrees.py cleanup --all                      # remove every review worktree of this repo
 
-Worktrees go to .git/review-worktrees/<name>-base and <name>-head. Prints JSON with
-both paths. The base worktree is at the merge base, which is what the pull
+Worktrees go to .git/review-worktrees/<name>-base and <name>-head, and review notes
+(such as expectations.md) to <name>-notes, outside both checkouts. Prints JSON with
+the three paths. The base worktree is at the merge base, which is what the pull
 request was written against. Add --tip to use the current tip of the base branch.
 
 Both worktrees get the gitignored files named in .worktreeinclude (gitignore
@@ -83,7 +84,10 @@ def prepare(args):
     paths = {"base": base_dir / f"{name}-base", "head": base_dir / f"{name}-head"}
     add(root, paths["base"], base_at)
     copied = add(root, paths["head"], head_ref)
+    notes = base_dir / f"{name}-notes"
+    notes.mkdir(exist_ok=True)
     print(json.dumps({"name": name, "base": str(paths["base"]), "head": str(paths["head"]),
+                      "notes": str(notes),
                       "base_commit": base_at, "head_commit": git("rev-parse", head_ref),
                       "copied": copied,
                       "cleanup": f"python3 {Path(__file__).resolve()} cleanup {name}"}, indent=2))
@@ -92,9 +96,14 @@ def prepare(args):
 def cleanup(args):
     _, base_dir = review_dir()
     if args.all:
-        targets = [p for p in base_dir.glob("*") if p.is_dir()] if base_dir.exists() else []
+        found = [p for p in base_dir.glob("*") if p.is_dir()] if base_dir.exists() else []
+        notes = [p for p in found if p.name.endswith("-notes")]
+        targets = [p for p in found if p not in notes]
     else:
         targets = [base_dir / f"{args.name}-{side}" for side in ("base", "head")]
+        notes = [base_dir / f"{args.name}-notes"]
+    for p in notes:
+        shutil.rmtree(p, ignore_errors=True)
     for p in targets:
         if p.exists():
             git("worktree", "remove", "--force", str(p))

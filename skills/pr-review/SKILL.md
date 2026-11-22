@@ -1,6 +1,6 @@
 ---
 name: pr-review
-description: Review a pull request or a local branch with evidence. For fixes, reproduce the problem on the target branch and prove the change fixes it. For features, check the change answers a roadmap goal, or start a feedback loop on its value when it does not. For every change, run the project's checks (lint, typecheck, build, tests) locally and weigh simplicity and cost. Posts non-blocking comment reviews and hands approval to the maintainer instead of approving. Use this skill whenever the user asks to review a PR, look at a pull request, check a branch before merging, self-review work before opening a PR, or decide whether a PR can be approved, even if they only paste a PR number or link.
+description: Review a pull request or a local branch with evidence. Writes down what a complete change would include before reading the diff, then lists what is missing, so the reviewer does not share the author's blind spots. Finds docs, flags and messages that still mention what the change removed, and has docs tested from outside for risky or public changes. For fixes, reproduce the problem on the target branch and prove the change fixes it. For features, check the change answers a roadmap goal, or start a feedback loop on its value when it does not. For every change, run the project's checks (lint, typecheck, build, tests) locally and weigh simplicity and cost. Posts non-blocking comment reviews and hands approval to the maintainer instead of approving. Use this skill whenever the user asks to review a PR, look at a pull request, check a branch before merging, self-review work before opening a PR, or decide whether a PR can be approved, even if they only paste a PR number or link.
 ---
 
 # PR review
@@ -25,11 +25,13 @@ All scripts are in `scripts/` and need only Python 3 and git (plus `gh` for GitH
 ```bash
 python3 <skill>/scripts/pr_info.py 42                       # PR facts, type hint, maintainer, CI, roadmap nodes
 python3 <skill>/scripts/pr_info.py --local --base main --head fix/x
+python3 <skill>/scripts/pr_info.py 42 --blind                # the same, without the changed files
 python3 <skill>/scripts/branch_policy.py --type feature --base main    # does this kind of change belong on that base?
 python3 <skill>/scripts/worktrees.py prepare --pr 42         # base and head side by side in .git/review-worktrees/
 python3 <skill>/scripts/checks.py <dir> [--run] [--install]  # detect and run lint, typecheck, build, tests
 python3 <skill>/scripts/repro.py <base> <head> --copy <test> -- <command>   # fails on base, passes on head?
 python3 <skill>/scripts/size_diff.py <base> <head> --glob 'dist/**/*.js'     # build output size, raw and gzip
+python3 <skill>/scripts/surface.py --base <base> --head <head>               # mentions outside the diff of what it removed or changed
 python3 <skill>/scripts/worktrees.py cleanup pr-42
 ```
 
@@ -39,7 +41,7 @@ Work in the review worktrees, never in the user's own checkout. The user may be 
 
 ### 1. Gather
 
-Run `pr_info.py`. Read the title, body, linked issues and the diff (`gh pr diff` or `git diff <merge-base>..<head>`). Decide the type: **fix**, **feature**, or **other** (refactor, docs, dependency update, chore). The type hint is a starting point; the diff decides. A PR that does two things is two reviews, and the comment should say it would be easier to merge as two PRs.
+Run `pr_info.py --blind`. Read the title, body, linked issues and the roadmap brief, but not the diff or the changed files yet (step 2b). Decide the type from the claim: **fix**, **feature**, or **other** (refactor, docs, dependency update, chore). The type hint is a starting point; the diff confirms it in step 3. A PR that does two things is two reviews, and the comment should say it would be easier to merge as two PRs.
 
 Check the base. `pr_info.py` reports `expected_base` and `base_ok` from the repo's branch policy (`branch_policy.py`): trunk-based repos send everything to the default branch, while gitflow-style repos send features and fixes to `dev` (or `develop`), hotfixes to the default branch, and promote `dev -> next -> main`. A PR against the wrong base is a blocking finding, because merging it would ship work to the wrong stage. The fix is quick: `gh pr edit <n> --base <expected>`. A hotfix against the default branch also needs back-merge PRs into the other integration branches; check they exist or are planned.
 
@@ -53,7 +55,17 @@ Both worktrees get the gitignored files that `.worktreeinclude` names (such as `
 
 Install dependencies in each worktree only when a step needs to run code (`checks.py --install`). Installs are slow, so do it once per worktree.
 
+### 2b. Expect
+
+Read `references/blind-review.md`. Before you open the diff, write `expectations.md` in the `notes` folder from `worktrees.py prepare`. Read only the claim (title, body, issue, brief and its acceptance criteria) and the base worktree's docs, examples and public API for that area. List what a complete change would include: behavior, edge cases, callers, public surface, docs, tests, release notes, and what it should not touch. Do not edit the file after you read the diff.
+
+When a caller gives you the claim first and the branch later, write the file and reply before asking for the branch.
+
 ### 3. Evaluate by type
+
+Now read the diff (`gh pr diff` or `git diff <merge-base>..<head>`). Mark each expectation `met`, `missing` or `not needed`, and list what the diff does that no expectation covers (see "Comparing the diff against them" in `references/blind-review.md`). Run `surface.py --base <base> --head <head>` and check each stale or changed mention. A missing acceptance criterion is blocking. A missing doc, changeset or test for changed behavior, or a stale mention in docs, is a should-fix finding.
+
+When the risk rating (step 5) is medium or high, or the change touches the public API or its docs, have the docs tested from outside: a new agent that sees only the docs and public signatures writes and runs tests (see "Docs tests" in `references/blind-review.md`). You have read the code, so do not write them yourself. A subagent reviewer reports "docs tests needed" to its caller instead.
 
 Read `references/evaluation.md` for the full criteria and how to measure cost.
 
@@ -119,7 +131,7 @@ In local mode, post nothing. Return the findings and the verdict to the caller.
 The reviewer only removes its own review worktrees. It never deletes the PR's branch, locally or on the remote: that belongs to the author, who prunes it after the merge (the pr-author skill does this).
 
 
-Run `worktrees.py cleanup --all`. Copy its output line into the final summary as it is printed (`cleanup: no review worktrees left`). If it lists worktrees that are still registered, say so instead of reporting the cleanup as done.
+Run `worktrees.py cleanup --all`. It also removes the notes folders, with the expectations and any docs tests. Copy its output line into the final summary as it is printed (`cleanup: no review worktrees left`). If it lists worktrees that are still registered, say so instead of reporting the cleanup as done.
 
 ## What the user sees
 
@@ -130,6 +142,8 @@ PR #42 fix: sum skipped the first item
 Verdict: ready for maintainer approval | not approvable yet | needs a decision (feature not on the roadmap)
 Proof: src/sum.test.js fails on main (exit 1), passes on the branch (exit 0)
 Checks: lint pass, typecheck pass, build pass, test pass (local)
+Expectations: 18 met, 2 missing (docs/cli.md, empty input), 3 not needed
+Surface: 1 stale mention (README.md:42 parseDate), changeset present
 Cost: +0.1kB gzip, no new dependencies
 Risk: low (PR says low), 2 caller files, reverts alone
 Findings: 0 blocking, 1 should fix, 2 nits

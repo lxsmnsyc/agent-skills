@@ -90,6 +90,14 @@ Each outcome records estimated size against actual (turns, rework, contract chan
 2026-10-27 perf-batch/round-cents est M actual M, risk est low measured high, 180k tokens: roundPrice is exported from src/index.ts
 ```
 
+When a fix node repairs a bug in work that a reviewed node shipped, add a `miss:` line naming the kind the review missed (stale doc, missed caller, changed default, missing edge case, untested branch):
+
+```
+2026-10-28 miss: accounts/password-reset shipped a stale README section for the reset token lifetime (stale doc)
+```
+
+A kind that recurs goes into pr-review's expectations table, or into `surface.py` when a script can find it. Propose the change to the user.
+
 A risk that keeps coming out higher than estimated in one area means the plan misreads it. Note the area in `CALIBRATION.md`, so the next estimate there starts higher.
 
 Tokens per size class are what a goal debate uses to estimate the next roadmap's token cost.

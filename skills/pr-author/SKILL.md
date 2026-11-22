@@ -104,10 +104,14 @@ Skip this step only for changes with no code or behavior in them, such as a typo
 
 ```
 Review <branch> against <base> in <repo> with the pr-review skill, in local mode. Do not post anything.
-Return the verdict, the checks result, and the findings, sorted into blocking, should fix, nits, and bugs found on the base.
+The claim: <PR title and the what-and-why paragraph, the linked issue or roadmap brief>.
+Write your expectations (pr-review step 2b) before you read the diff.
+Return the verdict, the checks result, the expectation counts, and the findings, sorted into blocking, should fix, nits, and bugs found on the base.
 ```
 
-**Self mode.** Review the branch yourself in this session. No new agent loads the repo again, so it costs less, but you will tend to agree with your own reasoning. Read `git diff <base>...<branch>` from start to end as if someone else wrote it. Go through pr-review's `references/evaluation.md` (correctness, simplicity, cost, risk), and run the full checks once with `checks.py --run`. Sort what you find into the same four groups. A self-review never counts toward auto-merge.
+Give the claim, not your summary of the code: the reviewer must form its own expectations from what the change is for. When the reviewer reports "docs tests needed", spawn the docs-test agent from pr-review's `references/blind-review.md` yourself and send the failures back to the reviewer, or as a roadmap worker report it to the orchestrator.
+
+**Self mode.** Review the branch yourself in this session. No new agent loads the repo again, so it costs less, but you will tend to agree with your own reasoning. Two steps work against that. First, write down what a complete change would include from the brief or issue alone (the kinds in pr-review's `references/blind-review.md`: behavior, edge cases, callers, public surface, docs, tests, release), then check the diff against that list. Second, run pr-review's `surface.py --base <base> --head <branch>` and fix every stale mention it finds. Then read `git diff <base>...<branch>` from start to end as if someone else wrote it. Go through pr-review's `references/evaluation.md` (correctness, simplicity, cost, risk), and run the full checks once with `checks.py --run`. Sort what you find into the same four groups. A self-review never counts toward auto-merge.
 
 Then:
 

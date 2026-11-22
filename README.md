@@ -7,7 +7,7 @@ Skills for Claude Code and other agents that support the Agent Skills format.
 - [`parallel-roadmap`](skills/parallel-roadmap/SKILL.md): plan and run a roadmap as a dependency graph, so several agents can work at the same time without blocking each other.
 - [`goal-debate`](skills/goal-debate/SKILL.md): weigh a goal against its cost before planning it. A proponent agent and an opponent agent argue over device, time and token cost, the orchestrator judges each claim with evidence, and the user answers what cannot be measured.
 - [`pr-author`](skills/pr-author/SKILL.md): write changes as small pull requests that merge on their own. Works in worktrees when the machine has room, splits bugs found on the base into their own fix PRs, self-reviews with pr-review, and asks before a push would start billed CI.
-- [`pr-review`](skills/pr-review/SKILL.md): review a pull request or branch with evidence. Fixes are reproduced on the base and proven on the head, features are checked against the roadmap, checks run locally, and approval goes to the maintainer.
+- [`pr-review`](skills/pr-review/SKILL.md): review a pull request or branch with evidence. Expectations are written before reading the diff, so the reviewer does not share the author's blind spots. Fixes are reproduced on the base and proven on the head, features are checked against the roadmap, checks run locally, and approval goes to the maintainer.
 - [`root-cause`](skills/root-cause/SKILL.md): find and prove the cause of a bug, flake or slowdown before anyone fixes it. Ends with a diagnosis that pr-author or a roadmap fix node builds on.
 - [`perf-pass`](skills/perf-pass/SKILL.md): profile a finished feature, try several optimizations side by side, and keep the one with the best measured gain for its cost. Runtime for libraries and servers, bundle size for web apps.
 - [`changesets`](skills/changesets/SKILL.md): write the changeset for a change. The bump level follows whether the thing existed before; `major` only with the maintainer's approval.
@@ -87,6 +87,7 @@ Reviews answer three questions with evidence: does the change work, is it worth 
 
 - Fixes: `scripts/repro.py` runs the reproduction on the base and the head, in worktrees under `.git/review-worktrees/`, and reports `proven`, `not-reproduced`, `not-fixed` or `inconclusive`.
 - Features: checked against their roadmap node's acceptance criteria and owned paths. Features with no node get a roadmap proposal for the maintainer instead of an approval.
+- Blind review: the reviewer writes down what a complete change would include from the claim alone (`pr_info.py --blind`), before it reads the diff, then lists what is missing. `scripts/surface.py` finds docs, flags, env vars and messages outside the diff that still mention what the change removed or changed, and a missing changeset. For medium or high risk, or public API changes, a separate agent tests the docs without seeing the code.
 - Every change: `scripts/checks.py` finds and runs lint, typecheck, build and tests locally, so private repos never start billed CI. `scripts/size_diff.py` measures build size.
 - Reviews are posted as comments, never as "request changes". The reviewer never approves. Approval goes to the maintainer, found by `scripts/pr_info.py`.
 

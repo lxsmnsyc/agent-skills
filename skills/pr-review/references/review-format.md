@@ -25,6 +25,8 @@ Not ready for approval yet. <One sentence on the main reason.>
 - Proof: `<command>` fails on `<base>` (<result>), passes on this branch (<result>).
 - Checks (local): lint <pass|fail>, typecheck <pass|fail>, build <pass|fail>, tests <pass|fail>.
 - Cost: <size change, benchmark change, new dependencies>.
+- Expectations (written before the diff): <n> met, <n> missing, <n> not needed.
+- Surface: <stale mentions outside the diff, or "none">. Docs tests: <n> passed, <n> failed, or "not run".
 ```
 
 Leave out sections that are empty. When the reproduction could not be made, say so under Blocking and ask for the steps.
