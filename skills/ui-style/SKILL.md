@@ -29,6 +29,7 @@ Avoid unnecessary secondary labels and descriptions. Let the layout do the expla
 Give every change the user causes a micro-interaction: press, toggle, check, submit, drag, drop, expand, copy, add and remove.
 
 - Animate only in response to the user or to a state change they caused. Do not animate idle or decorative elements, and do not animate content on first paint.
+- On a landing page, the landing-page skill lifts this rule for the product demo and for animations that show what the product does.
 - Show press feedback within 100ms. Prefer optimistic updates, and roll back with a visible error if the request fails.
 - Show a pending state inside the control that started the work, such as a spinner inside the button. Do not block the page with a global spinner.
 

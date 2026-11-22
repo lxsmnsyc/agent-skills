@@ -15,6 +15,7 @@ Skills for Claude Code and other agents that support the Agent Skills format.
 - [`ts-style`](skills/ts-style/SKILL.md): style rules for `.ts` and `.js` code. for-of loops instead of callback Array methods, function declarations named with a verb, and the repo's linter after each edit.
 - [`plain-writing`](skills/plain-writing/SKILL.md): rules for short, exact prose that people and agents can both scan, with a checker script and an optional hook for commits and PRs.
 - [`ui-style`](skills/ui-style/SKILL.md): design rules for interfaces. Let the layout explain instead of secondary labels and descriptions.
+- [`landing-page`](skills/landing-page/SKILL.md): rules for landing pages of any product. Show a demo, sell the benefit and the difference from competitors, add interaction that shows what the product does, and show real proof of who uses it.
 
 ## Install
 
@@ -134,6 +135,17 @@ The plugin also registers a hook that checks `git commit` messages and `gh pr` a
 ```
 
 `block` stops the command and tells Claude what to fix. `warn` only logs findings.
+
+## landing-page
+
+A landing page that describes the product without selling its benefit does not attract users. This skill:
+
+- requires a demo of the product or its effect: an animation, a sample UI or a snippet that runs
+- shapes each section as a benefit headline, proof, then the feature behind it, and asks for a section on the difference from named alternatives
+- adds playful animation or interaction only when it shows what the product does, and lifts the ui-style rule against idle animation for that
+- shows proof of who uses the product, and leaves the section out when no proof exists
+- has steps for libraries, CLIs, web apps, mobile apps, APIs, physical products and services in `references/product-kinds.md`
+- ends with a review checklist for the finished page
 
 ## License
 
