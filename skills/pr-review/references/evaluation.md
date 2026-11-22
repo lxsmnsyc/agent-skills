@@ -51,10 +51,13 @@ Compare the cost against the value. A 2kB increase for a fix to a common crash i
 
 ## Risk
 
-- **Blast radius**: how much breaks if this is wrong? Core paths used by every user rate higher than an isolated feature.
-- **Coverage**: are the changed lines exercised by tests? A risky change in untested code needs a test before it merges.
-- **Rollback**: can the change be reverted alone, or does it come with a migration or a format change?
+Use the rubric in pr-author's `references/risk.md`: reach, undo, trade and coverage, rated low, medium or high. Run `python3 <skills>/pr-author/scripts/risk.py --base <base> --head <head>` in the head worktree for the counts.
+
+- **Check the PR's Risk block.** A missing block on a code change is a should-fix finding. A rating below what the rubric gives, with no reason, is a should-fix finding. Give the counts that show it.
+- **Trade**: a fix or feature that makes a hot path slower or the bundle bigger without numbers is a should-fix finding. Measure it with `bench.py` or `size_diff.py`.
+- **Coverage**: a risky change in untested code needs a test before it merges.
 - **Compatibility**: does it change behavior that users, plugins or other packages rely on?
+- **Your rating** goes in the review summary. A roadmap orchestrator passes it to `plan.py can-merge --risk`.
 
 High risk does not block a change by itself. It raises the bar for proof and tests.
 

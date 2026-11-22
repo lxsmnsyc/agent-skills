@@ -33,7 +33,7 @@ Or copy a skill folder into `~/.claude/skills/` (all projects) or `.claude/skill
 
 Linear roadmaps make every item wait for the one above it. Most of those waits are not real, because a feature usually needs another feature's interface, not its finished code. This skill:
 
-- breaks a goal into nodes with typed dependencies (`contract`, `behavior`, `hard`), owned file paths, a size and a priority
+- breaks a goal into nodes with typed dependencies (`contract`, `behavior`, `hard`), owned file paths, a size, a priority and a risk estimate
 - freezes shared interfaces first, so dependent work can start against stubs
 - schedules nodes into waves with `scripts/plan.py`, which checks the graph, detects file overlaps and number collisions, and reports the critical path
 - runs one agent per ready node, each in its own git worktree
@@ -45,6 +45,7 @@ Linear roadmaps make every item wait for the one above it. Most of those waits a
 - orders work by priority (`must`, `should`, `could`, `later`) and reports when the must work is done
 - tracks token spend per node against a `budget:` in `GOAL.md`, with a forecast at the current rate
 - runs `experiment` nodes against a hypothesis fixed by goal-debate, gated until the user sees the result
+- estimates risk per node and checks it against the built change: high risk gets a fresh review, skips the batch and goes to the maintainer
 
 `plan.py` needs only Python 3.
 
@@ -77,6 +78,7 @@ python3 skills/goal-debate/scripts/debate.py docs/roadmaps/<slug>/debate status
 - `wt.py prune-merged --agent-worktrees` also sweeps `.claude/worktrees/` left by agents, skipping locked and recently used ones.
 - `scripts/ci_guard.py` reads workflow triggers and repo visibility, and says "ask" when a push to a private repo would start CI.
 - Bugs found on the base branch are proven there and fixed in their own PR, so they ship without waiting for the feature.
+- `scripts/risk.py` counts the files that use each changed symbol, and flags entry-file exports, migrations, dependency changes and untested files. Each PR gets a Risk block (reach, undo, trade, coverage) with a rating. A high rating means a fresh review and the maintainer.
 - A fresh agent reviews each branch with pr-review, for at most two rounds, before the PR goes to the maintainer.
 
 ## pr-review

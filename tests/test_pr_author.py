@@ -29,6 +29,54 @@ class PrAuthorTest(unittest.TestCase):
     def tearDown(self):
         self.tmp.cleanup()
 
+    def risk(self, base="main", head="HEAD"):
+        r = script("risk.py", "--base", base, "--head", head, "--json", cwd=self.repo)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        return json.loads(r.stdout)
+
+    def write(self, rel, text):
+        p = self.repo / rel
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(text)
+
+    def test_risk_low_for_tested_internal_change(self):
+        self.write("src/sum.ts", "function sumAll(xs: number[]) { return xs.reduce((a, b) => a + b, 0) }\n")
+        self.write("src/sum.test.ts", "import { sumAll } from './sum'\n")
+        sh("git add -A && git commit -qm base", self.repo)
+        sh("git switch -qc fix/sum", self.repo)
+        self.write("src/sum.ts", "function sumAll(xs: number[]) { let t = 0; for (const x of xs) t += x; return t }\n")
+        sh("git commit -qam fix", self.repo)
+        out = self.risk()
+        self.assertEqual(out["rating"], "low", out["reasons"])
+        self.assertEqual(out["untested"], [])
+
+    def test_risk_counts_callers_and_flags_untested(self):
+        self.write("src/price.ts", "function roundPrice(x: number) { return Math.round(x) }\n")
+        for i in range(6):
+            self.write(f"src/use{i}.ts", "roundPrice(1)\n")
+        sh("git add -A && git commit -qm base", self.repo)
+        sh("git switch -qc fix/round", self.repo)
+        self.write("src/price.ts", "function roundPrice(x: number) { return Math.round(x * 100) / 100 }\n")
+        sh("git commit -qam fix", self.repo)
+        out = self.risk()
+        self.assertEqual(out["rating"], "medium")
+        self.assertEqual(out["callers"], 6)
+        self.assertEqual(out["untested"], ["src/price.ts"])
+
+    def test_risk_high_for_public_api_and_migrations(self):
+        self.write("package.json", '{"name": "x", "exports": {".": "./src/index.ts"}}\n')
+        self.write("src/index.ts", "export function parse(s: string) { return s }\n")
+        self.write("src/index.test.ts", "import { parse } from './index'\n")
+        sh("git add -A && git commit -qm base", self.repo)
+        sh("git switch -qc feat/api", self.repo)
+        self.write("src/index.ts", "export function parse(s: string, strict = false) { return s }\n")
+        self.write("migrations/0002_add.sql", "alter table t add column c int;\n")
+        sh("git add -A && git commit -qm api", self.repo)
+        out = self.risk()
+        self.assertEqual(out["rating"], "high")
+        self.assertTrue(any(r.startswith("public API: parse") for r in out["reasons"]), out["reasons"])
+        self.assertEqual(out["data"], ["migrations/0002_add.sql"])
+
     def test_worktree_is_hidden_and_clean(self):
         out = json.loads(script("wt.py", "new", "feat/a", cwd=self.repo).stdout)
         self.assertTrue(out["path"].endswith(".worktrees/feat-a"))

@@ -35,6 +35,28 @@ Map to a size class:
 
 Size is about how hard the node is for an agent to finish in one session without losing track, not about calendar time.
 
+## Risk estimate
+
+Size says how hard a node is to finish. Risk says how much breaks if it is wrong, and how hard it is to take back. Estimate it for every node that changes code, with the same four questions pr-author's `references/risk.md` uses on the built change:
+
+| Question | Low | Medium | High |
+| --- | --- | --- | --- |
+| Reach: who runs the code it changes? | its own module | several modules, or one export outside the entry file | a public entry-file export, 20+ caller files, or a path every user runs |
+| Undo: can it be taken back? | revert alone | revert plus a follow-up | stored data, a file or wire format, or a public API |
+| Trade: does it pay speed or bytes for correctness? | no hot path | a hot path, small expected cost | a hot path or the initial bundle, with a cost users would notice |
+| Coverage: will a wrong change fail a check? | tests cover the area | tests reach the file only | no tests there yet |
+
+Any high makes the node high, any medium makes it medium. Security and concurrency code is at least medium. Write it as `risk:` in the brief.
+
+The estimate is checked against the change. pr-author measures the risk before its self-review, and the higher of the two decides:
+
+- **high** gets a fresh reviewer (`review_mode`), skips the batch and lands as its own pull request, and always goes to the maintainer.
+- **medium and low** follow the merge policy up to `merge.max_risk` (default `medium`).
+
+`can-merge` needs the measured rating (`--risk`) for every node that ships code. The curator compares estimates with the measured ratings at checkpoints, like sizes, and notes where the plan was off.
+
+High risk is not a reason to split by itself. It is a reason to put the risky part in its own early node, behind a flag, or after a node that adds the missing tests.
+
 ## What the scores trigger
 
 - **High uncertainty**: put a spike node first. The spike answers one question, has a time box, and writes its answer to `outcome.md`. The build node has a `hard` dependency on the spike. A spike can also produce a contract. For a bug whose cause is unknown, the spike is a `diagnose` node (root-cause skill).

@@ -51,3 +51,4 @@ Diagnose nodes only. Fill it in from the root-cause skill's `templates/diagnosis
 ## Size
 
 - Estimated <S/M/L>, actual <S/M/L>. <One line on why it differed, if it did.>
+- Risk estimated <low/medium/high>, measured <low/medium/high>. <One line on why it differed, if it did.>

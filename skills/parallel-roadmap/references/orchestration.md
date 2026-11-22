@@ -227,6 +227,7 @@ merge:
   mode: auto                                   # maintainer is the default
   method: squash
   max_size: M                                  # larger nodes go to the maintainer
+  max_risk: medium                             # riskier nodes (estimated or measured) go to the maintainer
   exclude: [release, hotfix, contract, gate, story]   # always go to the maintainer
   stories: auto                                # children merge into their story branch without the maintainer
 ```
@@ -237,11 +238,11 @@ With `mode: auto`, the decision is the script's, not yours:
 
 ```bash
 git diff --name-only <base>...<branch> | \
-  python3 <skill>/scripts/plan.py <root> can-merge <id> --review-clean --checks-pass [--proof] [--fresh-review] \
-    [--ci-guard ask] --files -
+  python3 <skill>/scripts/plan.py <root> can-merge <id> --review-clean --checks-pass --risk <low|medium|high> [--proof] \
+    [--fresh-review] [--ci-guard ask] --files -
 ```
 
-Pass `--fresh-review` only when a fresh agent did the review. A node in self mode needs it, so a self-reviewed PR goes to the maintainer unless you run a fresh review first. Pass `--review-clean` only when the review verdict had no blocking and no should-fix findings, `--checks-pass` only when lint, typecheck, build and tests passed on the branch rebased onto the current base, `--proof` only when a fix fails on the base and passes on the branch, and `--ci-guard ask` when pr-author's `ci_guard.py` says a merge would start billed CI. Exit code 0 (`auto`) means:
+Pass `--fresh-review` only when a fresh agent did the review. A node in self mode needs it, so a self-reviewed PR goes to the maintainer unless you run a fresh review first. Pass `--review-clean` only when the review verdict had no blocking and no should-fix findings, `--checks-pass` only when lint, typecheck, build and tests passed on the branch rebased onto the current base, `--proof` only when a fix fails on the base and passes on the branch, and `--ci-guard ask` when pr-author's `ci_guard.py` says a merge would start billed CI. Pass `--risk` with the higher of the worker's and the reviewer's rating from pr-author's risk step. Without it, every node that ships code goes to the maintainer. Exit code 0 (`auto`) means:
 
 1. Merge: `gh pr merge <n> --squash --delete-branch` (or the policy's method).
 2. Run the checks on the updated base. If they fail, revert the merge in a new pull request at once, merge that revert (restoring a green base is always allowed), set the node back to `todo` with the failure in its log, and tell the user.

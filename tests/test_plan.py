@@ -326,7 +326,7 @@ class PlanTest(unittest.TestCase):
     def test_can_merge_clean_feature(self):
         nodes, pol = self.merge_setup()
         r = plan.can_merge("f", nodes, pol, True, True, False,
-                           ["src/f/a.ts", "docs/roadmaps/r/nodes/f/outcome.md"])
+                           ["src/f/a.ts", "docs/roadmaps/r/nodes/f/outcome.md"], risk="low")
         self.assertEqual(r["verdict"], "auto", r["reasons"])
 
     def test_can_merge_refuses(self):
@@ -345,6 +345,29 @@ class PlanTest(unittest.TestCase):
         self.assertTrue(any("outside the node's paths" in x for x in r["reasons"]))
         r = plan.can_merge("f", nodes, pol, True, True, False, ["src/f/a.ts"], ci_guard="ask")
         self.assertEqual(r["verdict"], "maintainer")
+
+    def test_risk_estimate_and_measurement(self):
+        nodes, pol = self.merge_setup()
+        self.assertEqual(pol["max_risk"], "medium")
+        # No measured risk: the orchestrator has to run the risk step first.
+        r = plan.can_merge("f", nodes, pol, True, True, False, ["src/f/a.ts"])
+        self.assertTrue(any("no measured risk" in x for x in r["reasons"]), r["reasons"])
+        # A measured high risk sends it to the maintainer even when the brief said low.
+        r = plan.can_merge("f", nodes, pol, True, True, False, ["src/f/a.ts"], risk="high")
+        self.assertEqual(r["verdict"], "maintainer")
+        self.assertTrue(any("measured risk high is above the limit medium" in x for x in r["reasons"]))
+        # A high estimate in the brief forces a fresh review and a pull request.
+        node(self.root, "core", size="S", status="active", type="feature", owns="[src/core/**]", risk="high")
+        nodes, _, (_, warnings) = self.load()
+        self.assertEqual(nodes["core"]["risk"], "high")
+        self.assertEqual(plan.review_mode(nodes["core"]), "fresh")
+        self.assertEqual(plan.ship_mode(nodes["core"], nodes, pol), "pr")
+        r = plan.can_merge("core", nodes, pol, True, True, False, ["src/core/a.ts"], risk="high",
+                           fresh_review=True)
+        self.assertTrue(any("estimated risk high" in x for x in r["reasons"]), r["reasons"])
+        node(self.root, "odd", size="S", owns="[src/odd/**]", risk="extreme")
+        _, _, (_, warnings) = self.load()
+        self.assertTrue(any("odd: risk 'extreme'" in w for w in warnings))
 
     def test_merge_mode_defaults_to_maintainer(self):
         nodes, pol = self.merge_setup(mode="maintainer")
@@ -377,7 +400,8 @@ class PlanTest(unittest.TestCase):
         nodes, pol = self.merge_setup()
         r = plan.can_merge("f", nodes, pol, True, True, False, ["src/f/a.ts"], review="self")
         self.assertEqual(r["verdict"], "maintainer")
-        r = plan.can_merge("f", nodes, pol, True, True, False, ["src/f/a.ts"], review="self", fresh_review=True)
+        r = plan.can_merge("f", nodes, pol, True, True, False, ["src/f/a.ts"], review="self", fresh_review=True,
+                           risk="low")
         self.assertEqual(r["verdict"], "auto")
 
     def test_archive_only_what_nothing_open_needs(self):
@@ -472,7 +496,7 @@ class PlanTest(unittest.TestCase):
         # ship: pr from before batches does not take a node out of the batch.
         self.assertIsNotNone(nodes["pinned"]["batch"])
         nodes["f"]["status"] = "active"
-        r = plan.can_merge("f", nodes, pol, True, True, False, ["src/f/a.ts"])
+        r = plan.can_merge("f", nodes, pol, True, True, False, ["src/f/a.ts"], risk="low")
         self.assertEqual((r["verdict"], r["method"]), ("auto", "commit"), r["reasons"])
         cut = plan.cut_verdict("b", {"into": "main", "nodes": ["f"]}, nodes, pol, land, [], [], True)
         self.assertTrue(cut["due"])

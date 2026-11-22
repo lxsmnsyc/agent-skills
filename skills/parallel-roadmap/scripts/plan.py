@@ -51,6 +51,9 @@ TYPES = {"feature", "fix", "hotfix", "refactor", "docs", "chore", "release", "sp
 # could: worth doing when capacity is free. later: parked, not scheduled.
 PRIORITIES = {"must": 0, "should": 1, "could": 2, "later": 3}
 PRIORITY_NAMES = {v: k for k, v in PRIORITIES.items()}
+# Risk: how much breaks if the change is wrong, and how hard it is to undo. Estimated in the brief,
+# measured by pr-author's risk.py when the change exists.
+RISKS = ["low", "medium", "high"]
 DEFAULT_MAX_PARALLEL = 4
 # Outline nodes this many waves ahead (or closer) are due to be broken into briefs.
 DEFAULT_HORIZON = 2
@@ -185,7 +188,7 @@ def archived_node(root, nid, entry):
         "reserves": [], "added": None, "exclusive": [], "verify": None, "hypothesis": None,
         "fulfilled_by": entry.get("ref"), "type": None, "target": None, "from": None,
         "outline": False, "milestone": entry.get("milestone"), "archived": True,
-        "spent": int(entry.get("spent") or 0), "story": None, "early": False,
+        "spent": int(entry.get("spent") or 0), "story": None, "early": False, "risk": None,
         "ship": "auto", "land": "auto",
     }
 
@@ -231,6 +234,7 @@ def load(root):
             # Story children: the story they belong to, and whether they land on the parent branch first.
             "story": str(fm["story"]) if fm.get("story") not in (None, "", []) else None,
             "early": bool(fm.get("early")),
+            "risk": str(fm.get("risk") or "").strip().lower() or None,
             # pr: always a pull request. commit: one direct commit onto the target when allowed. auto: decide.
             "ship": str(fm.get("ship") or "auto").strip().lower(),
             # direct: skip the batch and land on the target on its own (land: batch in GOAL.md).
@@ -482,15 +486,19 @@ def apply_batches(nodes, root, land, held=None):
     """Set `batch` (the batch branch) and `batch_into` on nodes that land through a batch.
 
     Story children land on their story branch, and early children on the story's target, so
-    both keep their own branch. Hotfixes, releases, stories, nodes with `land: direct` and nodes
-    held for a release land directly, as before. `ship: pr` does not take a node out of the
+    both keep their own branch. Hotfixes, releases, stories, nodes with `land: direct`, nodes
+    held for a release and nodes estimated above `merge.max_risk` land directly. `ship: pr` does not take a node out of the
     batch: the maintainer sees it in the cut.
     """
+    policy = merge_policy(root)
     for k, n in nodes.items():
         n["batch"], n["batch_into"] = None, None
         if land["mode"] != "batch" or n.get("archived") or n["status"] in DONE | {"dropped"}:
             continue
         if n["type"] in BATCH_BYPASS or n.get("land") == "direct" or story_of(n, nodes) or k in (held or {}):
+            continue
+        # A node estimated above the risk limit gets its own pull request instead of riding a cut.
+        if risk_blockers(n.get("risk"), policy, "estimated"):
             continue
         n["batch"], n["batch_into"] = batch_branch(root, n.get("target_eff")), n.get("target_eff")
 
@@ -854,6 +862,9 @@ def check(nodes, contracts, load_errors, policy=None, milestones=None, release=N
             if n["milestone"] and n["milestone"] not in milestones:
                 warnings.append(f"node {nid}: milestone '{n['milestone']}' is not in GOAL.md "
                                 f"milestones ({', '.join(milestones)})")
+    for nid, n in live(nodes).items():
+        if n["risk"] and n["risk"] not in RISKS:
+            warnings.append(f"node {nid}: risk '{n['risk']}' not in {RISKS}")
     if policy:
         known = policy_branches(policy)
         for nid, n in live(nodes).items():
@@ -1311,7 +1322,7 @@ def overview(root, nodes, contracts, s, milestones, warnings, release=None, held
 
 
 SIZE_ORDER = ["S", "M", "L", "XL"]
-MERGE_DEFAULTS = {"mode": "maintainer", "method": "squash", "max_size": "M",
+MERGE_DEFAULTS = {"mode": "maintainer", "method": "squash", "max_size": "M", "max_risk": "medium",
                   "exclude": ["release", "hotfix", "contract", "gate", "story"], "stories": "auto",
                   "commits": "auto"}
 
@@ -1359,7 +1370,8 @@ def setting_warnings(root):
 def review_mode(n, setting="auto"):
     """Who reviews a node's pull request: `fresh` (a new agent) or `self` (the worker).
 
-    With `auto`, S nodes, docs or chore nodes and diagnose nodes are self-reviewed. Gated nodes, contract
+    With `auto`, S nodes, docs or chore nodes and diagnose nodes are self-reviewed, unless the
+    brief estimates high risk. Gated nodes, contract
     providers, releases, hotfixes and every other node get a fresh reviewer.
     """
     if setting in ("fresh", "self"):
@@ -1367,6 +1379,8 @@ def review_mode(n, setting="auto"):
     # A diagnose node ships a diagnosis, not code. Its proof is the loop, so no reviewer.
     if n["type"] == "diagnose":
         return "self"
+    if n.get("risk") == "high":
+        return "fresh"
     if n["gate"] or n["provides"] or n["type"] in ("release", "hotfix", "experiment"):
         return "fresh"
     if n["size"] == "S" or n["type"] in ("docs", "chore"):
@@ -1402,7 +1416,21 @@ def merge_blockers(n, nodes, policy, batched=True):
     if n["size"] in SIZE_ORDER and limit in SIZE_ORDER and \
             SIZE_ORDER.index(n["size"]) > SIZE_ORDER.index(limit):
         reasons.append(f"size {n['size']} is above the limit {limit}")
+    reasons += risk_blockers(n.get("risk"), policy, "estimated")
     return reasons
+
+
+def higher_risk(a, b):
+    """The higher of two risk levels; unknown levels count as nothing."""
+    ranked = [r for r in (a, b) if r in RISKS]
+    return max(ranked, key=RISKS.index) if ranked else None
+
+
+def risk_blockers(risk, policy, kind):
+    limit = str(policy.get("max_risk") or "medium")
+    if risk in RISKS and limit in RISKS and RISKS.index(risk) > RISKS.index(limit):
+        return [f"{kind} risk {risk} is above the limit {limit}"]
+    return []
 
 
 def ship_mode(n, nodes, policy):
@@ -1426,7 +1454,7 @@ def ship_mode(n, nodes, policy):
 
 
 def can_merge(nid, nodes, policy, review_clean, checks_pass, proof, files, ci_guard="safe",
-              review="fresh", fresh_review=False, held_by=None):
+              review="fresh", fresh_review=False, held_by=None, risk=None):
     """Decide whether the orchestrator may merge a node's pull request, or land its commit, itself.
 
     Returns {"verdict": "auto" | "maintainer", "reasons": [...], "method": ...}. Every reason
@@ -1450,6 +1478,10 @@ def can_merge(nid, nodes, policy, review_clean, checks_pass, proof, files, ci_gu
         reasons.append(f"waits for release {held_by}: merging now would ship it in that release")
     if ci_guard != "safe":
         reasons.append("merging would start billed CI on a private repo (ci_guard says ask)")
+    # The measured risk counts even for a batched node: a risky change falls back to a pull request.
+    reasons += risk_blockers(risk, policy, "measured")
+    if risk is None and n["type"] not in ("docs", "chore", "release", "diagnose"):
+        reasons.append("no measured risk: pass --risk from pr-author's risk step")
     allowed = n["owns"] + n["shared"]
     for k in n.get("children", []):
         allowed += nodes[k]["owns"] + nodes[k]["shared"]
@@ -1666,6 +1698,7 @@ def main():
     ap.add_argument("--checks-pass", action="store_true", help="can-merge, cut: lint, typecheck, build and tests passed")
     ap.add_argument("--proof", action="store_true", help="can-merge: the fix fails on base and passes on head")
     ap.add_argument("--files", default="", help="can-merge: changed files, comma separated, or '-' to read lines from stdin")
+    ap.add_argument("--risk", choices=RISKS, help="can-merge: the rating from pr-author's risk step on the built change")
     ap.add_argument("--fresh-review", action="store_true", help="can-merge: a fresh agent reviewed it (needed when the node's review mode is self)")
     ap.add_argument("--ci-guard", default="safe", choices=["safe", "ask"], help="can-merge, cut: the verdict of pr-author's ci_guard.py")
     ap.add_argument("--horizon", type=int, default=DEFAULT_HORIZON,
@@ -1746,7 +1779,7 @@ def main():
         r = can_merge(args.node, nodes, merge_policy(args.root), args.review_clean,
                       args.checks_pass, args.proof, files, args.ci_guard,
                       review_mode(nodes[args.node], review_setting(args.root)), args.fresh_review,
-                      held.get(args.node))
+                      held.get(args.node), args.risk)
         if args.json:
             print(json.dumps(r, indent=2))
         else:
@@ -1866,6 +1899,7 @@ def main():
                 "ship": ship_mode(nodes[k], nodes, mp),
                 "model": model_for(nodes[k]), "gate": nodes[k]["gate"], "mode": mode,
                 "review": review_mode(nodes[k], rs),
+                "risk": nodes[k]["risk"],
                 "held_by": held.get(k),
                 "publish": release["publish"] if release and nodes[k]["type"] == "release"
                 and not nodes[k]["from"] else None,

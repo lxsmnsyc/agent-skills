@@ -24,7 +24,11 @@ Depends on #<n>                      <- only for stacked PRs, as the first line
 - <bundle size change, new dependencies, migrations; numbers where measured>
 
 ## Risk
-- <what could break, and how it is covered>
+- Rating: <low | medium | high> (estimate in the brief: <level>, or "none")
+- Reach: <changed symbols and how many files use them; public API, data or formats touched>
+- Undo: <reverts alone, or what else must change; can it be tuned later>
+- Trade: <speed, memory or size paid for correctness, measured on base and branch, or "none">
+- Coverage: <which tests fail if the changed lines are wrong>
 
 ## Not done
 - <known gaps, nits left from review, follow-up PRs>
@@ -33,6 +37,8 @@ Depends on #<n>                      <- only for stacked PRs, as the first line
 ## Titles
 
 Use the repo's convention, usually `type(scope): summary` in the imperative, under 72 characters. Match the type to the change: `fix` only when there is a bug that the Proof section shows on the base.
+
+See `references/risk.md` for how to fill in the Risk section.
 
 ## Proof for fixes and optimizations
 

@@ -13,6 +13,7 @@ ship: auto              # auto: plan.py picks pr or commit from the merge policy
 land: auto              # auto: through the batch when GOAL.md has land: batch (the default) | direct: skip the batch, land on the target alone
 from:                   # release nodes only: the branch being promoted (target is where it goes)
 size: M                 # S | M | L | XL (XL must be split)
+risk: low               # low | medium | high: how much breaks if it is wrong, and how hard it is to undo (see "Risk estimate" in references/decomposition.md)
 spike: false            # true for nodes that answer a question instead of shipping code
 hypothesis:             # experiment nodes: the debate.md (or its Hypothesis section) that fixes the metric and threshold
 verify:                 # optional command run from the repo root; exit 0 means the acceptance holds. Test behavior (run the tests, call the code), not file existence

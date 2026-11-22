@@ -84,7 +84,7 @@ On a public repo where CI already ran, `gh pr checks` results count, but still r
 
 ### 5. Cost and simplicity
 
-Measure what can be measured, and give numbers: build size with `size_diff.py`, benchmarks when the repo has them and the change touches a hot path, new dependencies with their size and license. Then judge simplicity: is there a smaller change that does the same? See `references/evaluation.md`.
+Measure what can be measured, and give numbers: build size with `size_diff.py`, benchmarks when the repo has them and the change touches a hot path, new dependencies with their size and license. Then judge simplicity: is there a smaller change that does the same? Rate the risk with the rubric under "Risk" in `references/evaluation.md`, and check the PR's own Risk block against it.
 
 ### 6. Decide
 
@@ -131,6 +131,7 @@ Verdict: ready for maintainer approval | not approvable yet | needs a decision (
 Proof: src/sum.test.js fails on main (exit 1), passes on the branch (exit 0)
 Checks: lint pass, typecheck pass, build pass, test pass (local)
 Cost: +0.1kB gzip, no new dependencies
+Risk: low (PR says low), 2 caller files, reverts alone
 Findings: 0 blocking, 1 should fix, 2 nits
 Posted: comment review (link) | not posted, waiting for your go-ahead
 cleanup: no review worktrees left

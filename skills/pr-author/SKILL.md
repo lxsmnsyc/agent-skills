@@ -16,6 +16,7 @@ python3 <skill>/scripts/wt.py list
 python3 <skill>/scripts/wt.py remove <branch> [--delete-branch]
 python3 <skill>/scripts/wt.py prune-merged --base main [--base dev] [--remote] [--agent-worktrees] [--dry-run]
 python3 <skill>/scripts/ci_guard.py                 # will a push start billed CI? exit 2 means ask first
+python3 <skill>/scripts/risk.py --base main          # reach, exports, data, dependencies, untested files, suggested rating
 ```
 
 The pr-review skill provides `checks.py` (lint, typecheck, build, tests), `repro.py` (fails on base, passes on head) and the review itself. This skill uses them from `<skills>/pr-review/scripts/`.
@@ -82,11 +83,22 @@ Run the project's checks in the worktree: `python3 <skills>/pr-review/scripts/ch
 
 ### 5b. Performance pass
 
-When the change is a finished feature on code that runs often (render loops, request handlers, parsers, startup) or adds to what a browser downloads, run the perf-pass skill on it now, before the self-review: measure, try several options, keep the one with the best gain for its cost. Put its numbers in the PR's Cost section. Skip it for fixes, docs and changes with no measurable cost, and say so in the PR.
+When the change is a finished feature on code that runs often (render loops, request handlers, parsers, startup) or adds to what a browser downloads, run the perf-pass skill on it now, before the self-review: measure, try several options, keep the one with the best gain for its cost. Put its numbers in the PR's Cost section. Skip the full pass for fixes, docs and changes with no measurable cost, and say so in the PR. A fix on such code still gets one measurement of its trade in step 5c.
+
+### 5c. Risk
+
+Read `references/risk.md`. Run `risk.py --base <base> --head <branch>` for the facts: the files that use each changed symbol, exports in entry files, changed migrations or schemas, changed dependencies, and changed files no test names. Then answer the four questions:
+
+- **Reach**: who and what runs the changed code, in counts.
+- **Undo**: does it revert alone, or does it change stored data, a format or a public API? Can it be tuned later through one constant or flag?
+- **Trade**: does it pay speed, memory or bytes for correctness? On a hot path or the bundle, measure base against branch with perf-pass's `bench.py` or pr-review's `size_diff.py`.
+- **Coverage**: does a test fail if the changed lines are wrong?
+
+Rate it low, medium or high. The script's suggestion is a floor: raise it for a hot path, security or concurrency code, and lower it only with a reason. When a roadmap brief has a `risk:` estimate, the higher of the two counts, and a measured rating above the estimate gets one line saying why. Write the Risk block from `references/risk.md` into the PR description. A high rating means a fresh review in step 6 and the maintainer in step 7.
 
 ### 6. Self-review
 
-Skip this step only for changes with no code or behavior in them, such as a typo in prose or a comment. Say in the PR that it was skipped and why. For everything else, review in one of two modes. Use the mode the caller gives you (a roadmap worker gets it as `review` from `plan.py ready --json`). Without one, use self mode for S changes and docs or chore changes, and fresh mode for the rest.
+Skip this step only for changes with no code or behavior in them, such as a typo in prose or a comment. Say in the PR that it was skipped and why. For everything else, review in one of two modes. Use the mode the caller gives you (a roadmap worker gets it as `review` from `plan.py ready --json`). Without one, use self mode for S changes and docs or chore changes, and fresh mode for the rest. A high risk rating from step 5c always uses fresh mode.
 
 **Fresh mode.** Spawn a fresh agent to review the branch with the pr-review skill in local mode. Give it only the repo path, the base and the branch name. Do not give it your reasoning or a summary of what you did, because a reviewer that sees your reasoning tends to agree with it. The reviewer runs the full checks, so do not run them again on the same commit. A subagent cannot spawn agents. If you are one, as a roadmap worker is, skip the review, open the pull request, and report "fresh review needed": the caller spawns the reviewer and sends you its findings.
 
@@ -109,10 +121,10 @@ Run at most two review rounds. If blocking findings remain after the second, sto
 
 1. Run `ci_guard.py`. On a private repo where a push would start workflows, ask the user before pushing: CI minutes there are billed. Until they say yes, keep the branch local and report the local checks. A draft saves CI runs only when the workflows skip drafts. When `runs_on_drafts` lists workflows, tell the user once, and suggest adding `if: ${{ !github.event.pull_request.draft }}` to their jobs and `ready_for_review` to their `pull_request` types (repo-setup's `check.yml` has both). Do not edit the workflows in this PR.
 2. Rebase onto the latest base, and rerun the checks if the base moved.
-3. Write the description from `references/pr-body.md`: what and why, changes, proof (the failing test on the base and passing on the branch, for fixes), roadmap node, cost, risk, and anything not done.
+3. Write the description from `references/pr-body.md`: what and why, changes, proof (the failing test on the base and passing on the branch, for fixes), roadmap node, cost, the Risk block from step 5c, and anything not done.
 4. `git push -u origin <branch>` and `gh pr create --draft --base <base> --body-file <file>`. Do not merge it.
 5. Keep it a draft until the review is clean: no blocking and no should-fix findings left. A fresh review that runs after the PR is open (a roadmap worker's "fresh review needed") usually takes two or three rounds of fixes. Each push to a ready PR starts CI again. When the review is clean and the local checks pass on the final commit, run `gh pr ready <n>`. When the review was already clean before the PR was opened, mark it ready right away. If the review stops with blocking findings left after two rounds, leave it a draft and say why.
-6. If the PR is a roadmap node and the roadmap's merge policy is `auto`, the orchestrator decides with `plan.py can-merge` and may merge it without the user (parallel-roadmap, "Auto-merge"). Otherwise, hand it to the maintainer as pr-review describes: if the user is the maintainer, give them the link, the evidence and `gh pr review <n> --approve`. Otherwise post a short comment that it is ready for maintainer approval and mention them.
+6. If the PR is a roadmap node and the roadmap's merge policy is `auto`, the orchestrator decides with `plan.py can-merge --risk <rating>` and may merge it without the user (parallel-roadmap, "Auto-merge"). Report the rating so it can. A high rating always goes to the maintainer. Otherwise, hand it to the maintainer as pr-review describes: if the user is the maintainer, give them the link, the evidence and `gh pr review <n> --approve`. Otherwise post a short comment that it is ready for maintainer approval and mention them.
 
 Write all PR text by the plain-writing rules if that skill is installed.
 
@@ -140,6 +152,7 @@ Opened #57 fix: subtotal skipped the first item -> main (draft until review was 
 Opened #58 feat: sales tax on the subtotal -> main (independent of #57, marked ready after review)
 Proof (#57): src/cart.test.js fails on main, passes on fix/subtotal-first-item
 Checks: lint, build, tests pass locally on both branches
+Risk (#57): medium, 6 caller files of roundPrice, reverts alone, +2.1% on bench/cart.js
 Self-review: 1 round, 0 blocking, 1 nit fixed, 1 nit left (listed in #58)
 Worktrees: .worktrees/fix-subtotal-first-item, .worktrees/feat-tax (pruned after merge)
 ```

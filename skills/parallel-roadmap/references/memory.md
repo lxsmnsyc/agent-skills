@@ -83,11 +83,14 @@ Run one curator pass at each checkpoint (after a wave, or after a few nodes in r
 
 ## Calibration
 
-Each outcome records estimated size against actual (turns, rework, contract changes, surprises). The curator appends one line per node to `CALIBRATION.md`, with the node's `spent:` tokens:
+Each outcome records estimated size against actual (turns, rework, contract changes, surprises), and estimated risk against measured. The curator appends one line per node to `CALIBRATION.md`, with the node's `spent:` tokens and the risk when it differed:
 
 ```
 2026-10-26 perf-batch/frame-writer est M actual L, 410k tokens: byte-equality test needed a fixture generator
+2026-10-27 perf-batch/round-cents est M actual M, risk est low measured high, 180k tokens: roundPrice is exported from src/index.ts
 ```
+
+A risk that keeps coming out higher than estimated in one area means the plan misreads it. Note the area in `CALIBRATION.md`, so the next estimate there starts higher.
 
 Tokens per size class are what a goal debate uses to estimate the next roadmap's token cost.
 
