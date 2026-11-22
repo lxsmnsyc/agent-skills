@@ -141,9 +141,11 @@ The plugin also registers a hook that checks `git commit` messages and `gh pr` a
 A landing page that describes the product without selling its benefit does not attract users. This skill:
 
 - requires a demo of the product or its effect: an animation, a sample UI or a snippet that runs
+- ranks selling points by what the visitor cares about and how the product differs, gives the main one the hero, and cuts blocks that sell nothing
 - shapes each section as a benefit headline, proof, then the feature behind it, and asks for a section on the difference from named alternatives
+- holds visible text to a budget (600 words, one-sentence sections, a visual in every section), measured on the built page with `scripts/word_count.py`
 - adds playful animation or interaction only when it shows what the product does, and lifts the ui-style rule against idle animation for that
-- shows proof of who uses the product, and leaves the section out when no proof exists
+- shows proof of who uses the product only when it clears a strength bar, judged against the main alternative
 - has steps for libraries, CLIs, web apps, mobile apps, APIs, physical products and services in `references/product-kinds.md`
 - ends with a review checklist for the finished page
 

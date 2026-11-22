@@ -1,18 +1,19 @@
 ---
 name: landing-page
-description: Rules for landing pages, homepages and marketing sites of any product, such as a library, CLI, web app, mobile app, API or physical product. The page shows a demo of the product or its effect. It sells the benefit and the difference from competitors instead of describing features. It uses playful animation or interaction that shows what the product does, and shows who uses it when that proof exists. Includes steps for each kind of product and a review checklist. Use this skill whenever designing, writing, building or reviewing a landing page, product homepage, marketing site, the website/ folder of a repo, or a hero section, even if the user does not say "landing page". Load ui-style with it. This skill overrides only the ui-style rule against idle and first-paint animation. Every other ui-style rule still applies.
+description: Rules for landing pages, homepages and marketing sites of any product, such as a library, CLI, web app, mobile app, API or physical product. The page shows a demo of the product or its effect. It sells the benefit and the difference from competitors instead of describing features. It keeps text short and lets visuals carry the page. It picks the selling points the visitor cares about, uses playful animation or interaction that shows what the product does, and shows who uses it when that proof is strong enough. Includes steps for each kind of product, a word count script and a review checklist. Use this skill whenever designing, writing, building or reviewing a landing page, product homepage, marketing site, the website/ folder of a repo, or a hero section, even if the user does not say "landing page". Load ui-style with it. This skill overrides only the ui-style rule against idle and first-paint animation. Every other ui-style rule still applies.
 ---
 
 # Landing page
 
 A landing page has one job: make a visitor want the product and take the first step. A page that describes the product without selling its benefit does not attract users. A section that lists what the product has without showing how it differs from the competition states the obvious.
 
-Every landing page needs four things:
+Every landing page needs these things:
 
 1. A demo of the product or of its effect.
 2. Sections that sell the benefit and the difference from competitors.
 3. Playful UI: animation or interaction that shows what the product does.
-4. Proof of who uses it, when that proof exists.
+4. Proof of who uses it, when that proof is strong enough to help.
+5. Little text. Visuals carry the page, and every block earns its place by selling something the visitor cares about.
 
 Load ui-style along with this skill. ui-style says not to animate idle elements or content on first paint. On a landing page that rule is lifted for the demo and for animations that show the product. All other ui-style rules hold: motion uses `transform` and `opacity`, `prefers-reduced-motion` is honored, every component state is designed, and hit targets meet the minimum size.
 
@@ -29,6 +30,31 @@ Collect these facts first. Ask the user for any that the repo, the product or it
 
 If there is no differentiator, say so to the user before designing. A page cannot sell a difference the product does not have.
 
+## Selling points
+
+Decide what the page sells before writing any section. Every block on the page must serve a selling point.
+
+1. **List candidate selling points** from what the product does: features, numbers, design choices.
+2. **Check each one matters to the visitor.** Keep it only if evidence shows the visitor wants it or feels the problem it solves. Evidence includes issues and feature requests, questions in forums and chats, reviews of alternatives, and what competitors lead with. A point that only the builders care about, such as an internal design choice, is not a selling point unless it produces a result the visitor wants. Then sell the result.
+3. **Check each one is a difference.** A point that every alternative also has is table stakes. It goes in a short list or the FAQ, not in its own section.
+4. **Rank the rest** by how much the visitor cares, times how much better the product is than the alternatives.
+5. **Pick one main selling point.** It owns the hero headline and the hero demo. The next two to four become the benefit sections, in rank order.
+
+Then map every planned block to one selling point, or to one of the visitor's questions below. Cut any block that maps to neither.
+
+- What is it?
+- Why should I care?
+- Does it work?
+- Why this over the alternative?
+- Can I trust it?
+- How do I start?
+
+Content that answers none of these goes to the docs, with a link: API reference, the full feature list, changelog, roadmap, architecture and team history.
+
+Write one page for one visitor. A second audience, such as buyers next to developers, gets its own page.
+
+Show the ranked list and the mapping to the user before building. When the user disagrees with the main selling point, change it before writing copy.
+
 ## Section order
 
 Use this order unless the product calls for another one:
@@ -39,6 +65,30 @@ Use this order unless the product calls for another one:
 4. **Comparison**: how the product differs from the alternatives.
 5. **Objections**: price or license, requirements, support, maturity, often as a FAQ.
 6. **Final CTA**: repeat the first step, with the shortest path to it.
+
+## Text budget
+
+A landing page is looked at, not read. Visitors skim headlines and visuals, and leave when they hit walls of text. Keep to these limits:
+
+| Part | Limit |
+| --- | --- |
+| Hero headline | 10 words |
+| Hero support line | 25 words, one sentence |
+| Section headline | 8 words |
+| Section body | 25 words, one sentence. A card is a title and one line. |
+| Visible text in `<main>` | 600 words, without code blocks and the FAQ |
+
+- Every section has a visual: a demo, a screenshot, a chart, a snippet or a diagram. It takes at least half of the section's area.
+- **Skim test**: reading only the headlines and looking at the visuals tells the whole story. If it does not, fix the headline or the visual, not the body text.
+- **Conditions and caveats** go in a footnote, a chart foot or a linked page, never in the hero or a headline. The number stays next to the claim. Its run conditions, ranges and method go out of the way.
+- **Facts as a row, not prose.** License, version, runtime and price read faster as a row of short label and value pairs.
+- **Reduced-motion and no-JS versions show one still frame**, the end state. Do not write out every step of an animation as text panels. That repeats the content and can make up most of the page's words.
+- **Diagrams carry short labels**, not sentences. A step label is a few words.
+- Measure the text on the built page with `scripts/word_count.py`. Exclude the FAQ and any reduced-motion panels. Add a test that fails over the budget, so later edits do not grow the text back.
+
+```
+python3 skills/landing-page/scripts/word_count.py dist/index.html --budget 600 --exclude "#faq"
+```
 
 ## Hero
 
@@ -75,7 +125,7 @@ Rules:
 
 - Write from the visitor's side. "You" and the result they get, not "we" and what was built.
 - Replace adjectives with facts. Ban empty claims such as "blazing fast", "seamless", "powerful", "revolutionary", "next-generation" and "best-in-class". Write "renders 10,000 rows at 60 fps" instead of "blazing fast".
-- Every number links to how it was measured, or states the conditions next to it. For code, the perf-pass skill produces these numbers.
+- Every number links to how it was measured, or has its conditions in a footnote or chart foot. For code, the perf-pass skill produces these numbers.
 - Do not spend a section on what every competitor also has. A table-stakes feature goes in a short list or the FAQ, not in its own section.
 - The comparison is fair and dated. Name the version compared, and include where an alternative wins if a visitor would find out anyway.
 
@@ -94,7 +144,7 @@ Add animation or interaction that is relevant to the product:
 
 ## Proof and trust
 
-Show who uses the product, when that proof exists:
+Show who uses the product, when that proof exists and is strong enough to help:
 
 - **Logos** of companies or projects that use it, with their permission.
 - **Testimonials** with a name, role and photo, from people who agreed to be quoted.
@@ -106,6 +156,29 @@ Rules:
 - Never invent proof. No placeholder logos, made-up testimonials, rounded-up counts or stock photos posing as customers.
 - When there is no proof, leave the section out. A small honest project page beats one with fake trust. A young project can show other proof: who built it, what it powers, its test coverage or its license.
 - Put the strongest proof near the hero and near the final CTA, where the visitor decides.
+
+### When proof is strong enough
+
+Weak proof hurts. "40 downloads a week" tells the visitor nobody uses the product. Show a piece of proof only when it would impress the target visitor.
+
+- **Judge numbers against the main alternative**, not as absolutes. When the product's count is far below the competitor's, for example under a tenth, do not show the count. Show a better signal: growth rate, named dependents, test coverage or the author's track record.
+- **Starting floors** when no competitor data exists. The user can change them.
+
+  | Proof | Show it at |
+  | --- | --- |
+  | npm weekly downloads | 1,000 or more |
+  | GitHub stars | 500 or more |
+  | Store or review site rating | 4.0 or more, from 100 reviews or more |
+  | Users or customers | a count the visitor's peers would respect, judged per market |
+
+- **Logos must be known to the visitor's audience.** Show three or more, or one that every visitor knows. Brands from the visitor's own industry beat famous brands from an unrelated one. One unknown logo is weaker than none.
+- **Rank proof by strength** and lead with the strongest you have:
+  1. known brand logos
+  2. named testimonials with a result
+  3. case studies with numbers
+  4. usage numbers
+  5. stars and ratings
+- When nothing clears the bar, leave the proof section out and use the space for the demo or the comparison.
 
 ## Objections and the final CTA
 
@@ -124,6 +197,11 @@ Rules:
 
 Run this on a finished page. Every line passes, or the user has accepted the gap.
 
+- [ ] One main selling point owns the hero. It matters to the visitor, with evidence, and differs from the alternatives.
+- [ ] Every block maps to a selling point or a visitor question. Nothing is there only because the product has it.
+- [ ] Visible text is within the budget, measured on the built page, with a test that holds it there.
+- [ ] Every section has a visual. The skim test passes.
+- [ ] Conditions and caveats sit in footnotes, not in the hero.
 - [ ] The hero headline states a result, not a category.
 - [ ] The hero has one primary CTA.
 - [ ] A demo of the product or its effect is visible in or right below the hero.
@@ -134,7 +212,7 @@ Run this on a finished page. Every line passes, or the user has accepted the gap
 - [ ] Every animation or interaction shows something the product does.
 - [ ] Animations pause off screen and respect `prefers-reduced-motion`.
 - [ ] Heavy demos load after the first paint with no layout shift.
-- [ ] All proof is real and shown with permission. No proof means no proof section.
+- [ ] All proof is real, shown with permission, and clears the strength bar. Weak or no proof means no proof section.
 - [ ] The main objections are answered.
 - [ ] The CTA repeats at the end, and the first result takes three steps or fewer.
 - [ ] The steps for the product kind in references/product-kinds.md are covered.
