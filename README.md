@@ -18,6 +18,7 @@ Skills for Claude Code and other agents that support the Agent Skills format.
 - [`plain-writing`](skills/plain-writing/SKILL.md): rules for short, exact prose that people and agents can both scan, with a checker script and an optional hook for commits and PRs.
 - [`ui-style`](skills/ui-style/SKILL.md): design rules for interfaces. Let the layout explain instead of secondary labels and descriptions.
 - [`landing-page`](skills/landing-page/SKILL.md): rules for landing pages of any product. Show a demo and an animated hero visual (the product at work first, a concept animation when that shows it better, picked from proposed designs), sell the benefit and the difference from competitors, add interaction that shows what the product does, and show real proof of who uses it.
+- [`docs-site`](skills/docs-site/SKILL.md): plan, write and maintain a docs site. Each page has one type (tutorial, guide, concept, feature, reference, internals and more) with a fixed template, and a checker verifies page structure, links, orphan pages and reference coverage.
 
 ## Install
 
@@ -169,6 +170,28 @@ A landing page that describes the product without selling its benefit does not a
 - shows proof of who uses the product only when it clears a strength bar, judged against the main alternative
 - has steps for libraries, CLIs, web apps, mobile apps, APIs, physical products and services in `references/product-kinds.md`
 - ends with a review checklist for the finished page
+
+## docs-site
+
+Docs are hard to use when one page teaches, instructs, explains and lists options at once. This skill:
+
+- splits the site by what the reader needs: getting started, guides, concepts and reference, plus examples, troubleshooting, migration, changelog and glossary, scaled down for small projects
+- gives each page a `type:` in its frontmatter and a template in `templates/` for that type
+- defines the feature page (what it is, why, how it works, usage, options, limits, related) and the reference entry (signature, parameters, returns, throws, example)
+- separates concepts, which explain what the user observes, from internals pages, which explain the mechanism (such as a compiler's stages) for contributors and list the source paths they cover in `covers:`
+- orders each section: concepts by prerequisite (`requires:` in the frontmatter), guides by project stage, and rules for reference, troubleshooting, examples, migration, glossary and internals
+- specifies search as a command bar (header button, `/`, Cmd or Ctrl+K) with a build-time index that loads on first open, based on idlip's
+- plans for translation from the first page: locale folders, explicit heading ids, interface strings in one file, no text in images
+- covers diagrams, doc comments for generated reference, errors that link to their docs, synced tabs, shared content, callouts, voice, screenshots, accessibility and the README's role
+- gives a 10-step method for writing one page, starting from the reader's question and the example
+- requires examples that run as written and are tested
+- audits an existing site for mixed pages, gaps and stale pages before restructuring it
+- keeps docs in the same pull request as the code, and covers deprecations, versioned docs and `llms.txt` for agents
+- checks pages with `scripts/docs_check.py`: required sections per type, lead sentences, code fence languages, broken links, orphan pages, exports with no reference entry, `covers:` paths that no longer exist, `requires:` entries that are missing, cyclic or out of order, exports with no doc comment, and missing or stale translations
+
+```
+python3 skills/docs-site/scripts/docs_check.py website/docs --exports src/index.ts --reference website/docs/reference
+```
 
 ## License
 

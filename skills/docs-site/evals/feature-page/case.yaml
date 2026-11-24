@@ -1,0 +1,6 @@
+schema_version: "1.1"
+name: feature-page
+expected_outcome: |
+  A small store library has a docs folder with getting started, a reference page and a guide. The user asks for docs for the new `persist` option of `createStore`. The run writes a feature page with `type: feature` and the sections Why, How it works, Usage and Related, adds a reference entry for the option, links the new page from an existing page, and runs docs_check.py.
+context:
+  scaffold_script: place-files.sh
