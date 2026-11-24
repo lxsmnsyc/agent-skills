@@ -69,6 +69,10 @@ The release step folds every changeset into `CHANGELOG.md` and empties `.changes
 
 Every changeset on the release branch ships with the next release. A pull request can be held for a later release, by a roadmap fence or by the maintainer. Keep its changeset in the pull request and hold the merge. Do not remove the changeset to slip the code into the current release, because the change would then ship with no changelog entry.
 
+## The hook
+
+`scripts/hook.py` is a Claude Code `PreToolUse` hook for Write, Edit and MultiEdit of `.changeset/*.md`. It blocks the write when the agent making it has not loaded this skill and plain-writing. It also blocks frontmatter without a `patch`, `minor` or `major` level, plain-writing errors, sentences over 25 words, semicolons and entries of more than two sentences. A `major` level asks the user to approve the write. Set `CHANGESETS_HOOK=block` to turn it on, or `warn` to only log findings. It does nothing when the variable is unset. The plugin registers the hook. It needs the plain-writing skill next to this one.
+
 ## In reviews
 
 When reviewing a pull request in such a repo, check that it has a changeset when it should, that the level follows the rules above, and that a `major` was approved. A missing or wrong changeset is a should-fix finding, not a blocking one.

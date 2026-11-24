@@ -158,6 +158,12 @@ The plugin also registers a hook that checks `git commit` messages and `gh pr` a
 
 `block` stops the command and tells Claude what to fix. `warn` only logs findings.
 
+A second hook checks every write to `.changeset/*.md`. It blocks the write until the agent making it, main session or subagent, has loaded the `changesets` and `plain-writing` skills. It also blocks a changeset with plain-writing errors, a sentence over 25 words, a semicolon or an entry of more than two sentences. A `major` bump asks you to approve the write. Turn it on the same way:
+
+```json
+{ "env": { "CHANGESETS_HOOK": "block" } }
+```
+
 ## landing-page
 
 A landing page that describes the product without selling its benefit does not attract users. This skill:
