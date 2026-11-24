@@ -22,7 +22,7 @@ How to judge whether a change works, and whether it is worth what it costs.
 
 ## Simplicity
 
-Ask whether a smaller change would do the same job. Signs that it would:
+Ask whether a smaller change would do the same job. The design-level version of this question (another layer, an existing feature, no change at all) is in `premise.md` and comes before this one. Signs that it would:
 
 - New abstractions (classes, options, layers, generic helpers) with a single user.
 - Code that handles cases that cannot happen.

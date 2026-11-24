@@ -1,15 +1,18 @@
 ---
 name: pr-review
-description: Review a pull request or a local branch with evidence. Writes down what a complete change would include before reading the diff, then lists what is missing, so the reviewer does not share the author's blind spots. Finds docs, flags and messages that still mention what the change removed, and has docs tested from outside for risky or public changes. For fixes, reproduce the problem on the target branch and prove the change fixes it. For features, check the change answers a roadmap goal, or start a feedback loop on its value when it does not. For every change, run the project's checks (lint, typecheck, build, tests) locally and weigh simplicity and cost. Posts non-blocking comment reviews and hands approval to the maintainer instead of approving. Use this skill whenever the user asks to review a PR, look at a pull request, check a branch before merging, self-review work before opening a PR, or decide whether a PR can be approved, even if they only paste a PR number or link.
+description: Review a pull request or a local branch with evidence. First challenges the premise: is the problem real, does the change treat its cause, would a smaller design or an existing feature do. Writes down what a complete change would include before reading the diff, then lists what is missing. Finds docs and flags that still mention what the change removed. For fixes, reproduce the problem on the target branch and prove the change fixes it. For features, check the change answers a roadmap goal, or start a feedback loop on its value. Runs the project's checks locally and weighs simplicity and cost. Posts non-blocking comment reviews and hands approval to the maintainer. Use this skill whenever the user asks to review a PR, look at a pull request, check a branch before merging, self-review work before opening a PR, or decide whether a PR can be approved, even if they only paste a PR number or link.
 ---
 
 # PR review
 
-A review answers three questions with evidence, not opinion:
+A review answers four questions with evidence, not opinion:
 
+0. Is this the right change? The problem is real, the change treats its cause at the right layer, and nothing smaller or already in the repo does the same job. See `references/premise.md`.
 1. Does the change do what it claims? For a fix, the problem exists on the target branch and is gone on the PR branch. For a feature, it meets its acceptance criteria.
 2. Is it worth what it costs? Simplicity, runtime, size, dependencies, API surface, maintenance.
 3. Does it pass what the project requires before merging? Lint, typecheck, build, tests.
+
+Question 0 comes first. A review that only lists line-level findings has not done its job: if the approach is wrong, every nit on its lines is wasted work for the author.
 
 Then it reports without blocking anyone. Feedback goes out as comments, never as "request changes". Approval goes to the maintainer, never from the reviewer.
 
@@ -57,13 +60,13 @@ Install dependencies in each worktree only when a step needs to run code (`check
 
 ### 2b. Expect
 
-Read `references/blind-review.md`. Before you open the diff, write `expectations.md` in the `notes` folder from `worktrees.py prepare`. Read only the claim (title, body, issue, brief and its acceptance criteria) and the base worktree's docs, examples and public API for that area. List what a complete change would include: behavior, edge cases, callers, public surface, docs, tests, release notes, and what it should not touch. Do not edit the file after you read the diff.
+Read `references/blind-review.md` and `references/premise.md`. Before you open the diff, write `expectations.md` in the `notes` folder from `worktrees.py prepare`. Read only the claim (title, body, issue, brief and its acceptance criteria) and the base worktree's docs, examples and public API for that area. Start it with a `## Premise` section. Write the goal in one sentence, whether the problem is shown to be real, and where it comes from in the base code. List the options (do nothing, use what exists, the smallest change, a change at another layer) and pick one. Search the base for existing code that already does the job before you write that none exists. Then list what a complete change would include: behavior, edge cases, callers, public surface, docs, tests, release notes, and what it should not touch. Do not edit the file after you read the diff.
 
 When a caller gives you the claim first and the branch later, write the file and reply before asking for the branch.
 
 ### 3. Evaluate by type
 
-Now read the diff (`gh pr diff` or `git diff <merge-base>..<head>`). Mark each expectation `met`, `missing` or `not needed`, and list what the diff does that no expectation covers (see "Comparing the diff against them" in `references/blind-review.md`). Run `surface.py --base <base> --head <head>` and check each stale or changed mention. A missing acceptance criterion is blocking. A missing doc, changeset or test for changed behavior, or a stale mention in docs, is a should-fix finding.
+Now read the diff (`gh pr diff` or `git diff <merge-base>..<head>`). Before you judge any line, compare the PR's approach with your Premise pick (see "Comparing your design with the PR's" in `references/premise.md`). A shown symptom-only fix, an unproven problem, or an existing feature that does the same job is blocking. A smaller design you can sketch is should-fix. A goal or cost only the maintainer can decide is a question for them. Then mark each expectation `met`, `missing` or `not needed`. List what the diff does that no expectation covers (see "Comparing the diff against them" in `references/blind-review.md`). Run `surface.py --base <base> --head <head>` and check each stale or changed mention. A missing acceptance criterion is blocking. A missing doc, changeset or test for changed behavior, or a stale mention in docs, is a should-fix finding.
 
 When the risk rating (step 5) is medium or high, or the change touches the public API or its docs, have the docs tested from outside: a new agent that sees only the docs and public signatures writes and runs tests (see "Docs tests" in `references/blind-review.md`). You have read the code, so do not write them yourself. A subagent reviewer reports "docs tests needed" to its caller instead.
 
@@ -78,12 +81,12 @@ Read `references/evaluation.md` for the full criteria and how to measure cost.
    - `not-reproduced`: the base passes too. The PR does not show the problem. Do not recommend approval. Before writing the comment, spend a few minutes looking for inputs that do produce the reported symptom (see "When the problem does not reproduce" in `references/evaluation.md`). A found cause turns the comment from "please send a reproduction" into "the real cause is X, shown by this input".
    - `not-fixed`: the head fails too. The fix does not work.
    - `inconclusive`: the command could not run. Fix the setup and try again before judging.
-4. Check that the fix addresses the cause, not only the one reproduced case. Look at the other callers of the changed code.
+4. Check that the fix addresses the cause, not only the one reproduced case. Look at the other callers of the changed code. A fix that passes `repro.py` can still be at the wrong place. Examples: a retry around a race, a cache over a call made in a loop, a null check where the null should never exist. `proven` only means the reported case is gone.
 
 **Feature.**
 
 1. Find its roadmap node. `pr_info.py` lists nodes whose brief the body links to, or whose owned paths cover the changed files.
-2. **When a node matches**: check every acceptance criterion in the brief, and run its `verify` command if it has one. Check the diff stays inside the node's owned paths. Then evaluate simplicity and cost as for any change.
+2. **When a node matches**: the goal is agreed, so do not reopen it. Still question the approach. When the brief asks for a workaround, or for something the repo already has, ask the maintainer. Check every acceptance criterion in the brief, and run its `verify` command if it has one. Check the diff stays inside the node's owned paths. Then evaluate simplicity and cost as for any change.
 3. **When no node matches**: the feature has not been agreed yet. Judge its value (see `references/features.md`) and lean toward feedback: the comment proposes it as a roadmap addition, with a suggested priority, size and the questions the maintainer must answer. Do not recommend approval until the feature has a node or the maintainer accepts it in the thread. This is the same loop the parallel-roadmap skill uses for ideas that arrive mid-roadmap.
 
 **Other.** Refactors must not change behavior: run the tests on both sides and compare. Dependency updates need the changelog read for breaking changes. Docs need to match the code they describe.
@@ -100,11 +103,13 @@ Measure what can be measured, and give numbers: build size with `size_diff.py`, 
 
 ### 6. Decide
 
-Sort every finding into one of three kinds:
+Sort every finding into one of three kinds. Premise findings are sorted the same way and go first:
 
 - **Blocking**: the change does not work, is not proven, breaks a check, breaks compatibility without saying so, or costs clearly more than it gives. Any blocking finding means no approval recommendation.
 - **Should fix**: real problems that are small. Two or more of these, or one that touches behavior, also hold back approval.
 - **Nit**: style, naming, wording. Nits never hold back approval.
+
+When a premise finding is blocking, keep the rest short: list only the problems that would survive a redesign, and drop nits.
 
 Bugs you find on the base that the PR did not cause and does not touch are not findings against the PR. Mention them under a separate heading ("Found on `<base>`, not caused by this PR") and suggest a separate fix PR against the base branch, so the fix can ship on its own and this PR is not held up. A vulnerability on the base never goes in the review. Report it only to the user, who fixes it with the security-fix skill.
 
@@ -140,6 +145,7 @@ End with a short summary in the chat:
 ```
 PR #42 fix: sum skipped the first item
 Verdict: ready for maintainer approval | not approvable yet | needs a decision (feature not on the roadmap)
+Approach: matches my pick (fix at the cause in src/sum.js) | differs: <option and why>
 Proof: src/sum.test.js fails on main (exit 1), passes on the branch (exit 0)
 Checks: lint pass, typecheck pass, build pass, test pass (local)
 Expectations: 18 met, 2 missing (docs/cli.md, empty input), 3 not needed

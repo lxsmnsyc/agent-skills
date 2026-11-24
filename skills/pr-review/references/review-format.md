@@ -9,6 +9,9 @@ Posted as one comment review (`gh pr review <n> --comment --body-file review.md`
 ```
 Not ready for approval yet. <One sentence on the main reason.>
 
+## Approach
+- <The goal in one sentence.> <Why this approach does not reach it, or what smaller or existing option does.> Evidence: <path, command, number>. Sketch: <the alternative, with the code it reuses>.
+
 ## Blocking
 - `<path>:<line>`: <problem>. Evidence: <command and result, number, or quote>. To resolve: <what would fix it>.
 
@@ -29,7 +32,7 @@ Not ready for approval yet. <One sentence on the main reason.>
 - Surface: <stale mentions outside the diff, or "none">. Docs tests: <n> passed, <n> failed, or "not run".
 ```
 
-Leave out sections that are empty. When the reproduction could not be made, say so under Blocking and ask for the steps.
+Leave out sections that are empty. Approach comes first because a wrong approach makes line-level findings moot. When an Approach finding is blocking, list under the other headings only what would still apply after the redesign, and drop nits. When the approach holds, leave the section out. Add one line under "What I checked" instead: `- Approach: matches the design I wrote before the diff (<option>).` When the reproduction could not be made, say so under Blocking and ask for the steps.
 
 ## Ready for maintainer approval
 
@@ -41,6 +44,7 @@ Ready for maintainer approval, @<maintainer>.
 - Proof: `<command>` fails on `<base>`, passes on this branch.
 - Checks (local): lint pass, typecheck pass, build pass, tests pass.
 - Cost: <numbers>.
+- Approach: <why it is the right change, in one line>.
 - Roadmap: <node id, or "not a feature">.
 ```
 
@@ -54,4 +58,5 @@ See `features.md` for the template used when a feature is not on the roadmap.
 
 - Write about the code, not the author.
 - State facts and evidence. Do not soften blocking findings into suggestions, and do not inflate nits into problems.
+- Do not stop at the lines. A review of only nits and naming on a change whose goal or approach you never questioned is not finished.
 - One comment per problem. Do not repeat a finding across files; list the places in one comment.

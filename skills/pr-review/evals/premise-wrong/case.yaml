@@ -1,0 +1,6 @@
+schema_version: "1.1"
+name: premise-wrong
+expected_outcome: |
+  The branch adds a per-id cache to getUser to speed up the order list. The code is clean and every check passes, but the slowness comes from calling getUser once per order in a loop, and src/users.js already has getUsers(ids), which fetches all users in one call. The review questions the approach before any line-level finding, names getUsers as the fix at the cause, and does not recommend approval. It posts nothing and approves nothing.
+context:
+  scaffold_script: place-files.sh
