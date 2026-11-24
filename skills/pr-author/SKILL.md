@@ -21,6 +21,18 @@ python3 <skill>/scripts/risk.py --base main          # reach, exports, data, dep
 
 The pr-review skill provides `checks.py` (lint, typecheck, build, tests), `repro.py` (fails on base, passes on head) and the review itself. This skill uses them from `<skills>/pr-review/scripts/`.
 
+## Asking the user
+
+Ask only when the answer changes what you do next. Before you ask, write down the next step for each answer. When only one answer moves the task forward, the question has one answer: take that step and report it.
+
+- "Should I push?" or "Should I open the PR?" after the user asked for a pull request: push and open it. The request already answered.
+- "Should I continue?" or "Want me to do step 7?" between the steps of this skill: continue.
+- A step with nothing to act on, such as a push with no new commits: skip it.
+
+A step that needs approval is a real question, because "no" has its own path. A push that starts billed CI is one: "no" keeps the branch local. Others are deleting remote branches, posting where others see it, and a `major` changeset. Say in the question what "no" does.
+
+Ask a real question once, list the answer you would pick first, and keep working on everything that does not depend on it.
+
 ## Steps
 
 ### 1. Decide where to work

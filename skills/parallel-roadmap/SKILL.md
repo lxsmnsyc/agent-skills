@@ -209,6 +209,8 @@ Read `references/orchestration.md` before this step. In short:
 6. In batch mode, run `plan.py <root> cut` at checkpoints and cut the batch when it is due (see "Batches" in `references/orchestration.md`).
 7. Stop at gates. At checkpoints, end the session to keep the orchestrator's context small. The next session resumes from the repo (see "Keeping the orchestrator's context small" in `references/orchestration.md`). Then go back to step 1.
 
+Ask the user only when the answer changes what you do next. Before you ask, write down the next step for each answer. When only one answer moves the run forward, take that step and report it. "Should I start the next ready nodes?", "Should I push the PR?" and "Should I run the curator?" have one answer during execution. Plan approval, gates, priorities and pushes that start billed CI are real questions, because "no" has its own path. Say in the question what "no" does.
+
 One change per node is the default, because every piece of work then merges on its own and nothing waits for a large integration branch. A story is the exception: a feature branch scoped to one feature, which merges as soon as that feature is done. Use a branch for the whole roadmap only when the user asks for it.
 
 For long roadmaps, `scripts/wave.workflow.js` runs one wave as a Workflow (fan-out plus curator), driven by the `ready --json` output.
