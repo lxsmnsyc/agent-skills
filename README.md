@@ -9,6 +9,7 @@ Skills for Claude Code and other agents that support the Agent Skills format.
 - [`pr-author`](skills/pr-author/SKILL.md): write changes as small pull requests that merge on their own. Works in worktrees when the machine has room, splits bugs found on the base into their own fix PRs, self-reviews with pr-review, and asks before a push would start billed CI.
 - [`pr-review`](skills/pr-review/SKILL.md): review a pull request or branch with evidence. It questions the premise and approach before the lines. Expectations are written before reading the diff, so the reviewer does not share the author's blind spots. Fixes are reproduced on the base and proven on the head, features are checked against the roadmap, checks run locally, and approval goes to the maintainer.
 - [`root-cause`](skills/root-cause/SKILL.md): find and prove the cause of a bug, flake or slowdown before anyone fixes it. Ends with a diagnosis that pr-author or a roadmap fix node builds on.
+- [`issue-author`](skills/issue-author/SKILL.md): write and open issues a maintainer can act on. Searches for duplicates, follows the repo's templates, and reproduces a bug on every release line the repo still maintains. No issue for a bug only in unmaintained versions, and none for a security problem.
 - [`perf-pass`](skills/perf-pass/SKILL.md): profile a finished feature, try several optimizations side by side, and keep the one with the best measured gain for its cost. Runtime for libraries and servers, bundle size for web apps.
 - [`changesets`](skills/changesets/SKILL.md): write the changeset for a change. The bump level follows whether the thing existed before; `major` only with the maintainer's approval.
 - [`repo-setup`](skills/repo-setup/SKILL.md): set up a new or old npm library repo: pnpm, changesets, tsdown, vitest, oxlint and oxfmt. Adds a check workflow and a release workflow with trusted publishing. Decides where property, model or oracle tests pay off, and finds implicit state machines.
@@ -99,6 +100,13 @@ Reviews answer four questions with evidence: is it the right change, does it wor
 - Writes a diagnosis: the cause at file and line, the regression test, and fix options with their reach, cost and undo.
 - Routes it: a pr-author fix PR, a roadmap fix node, an issue, or security-fix for a vulnerability, which is never written down.
 - In parallel-roadmap it runs as a `diagnose` node. `plan.py` warns until the fix node exists.
+
+## issue-author
+
+- Finds the repo that owns the bug, follows its issue templates, `contact_links` and labels, and searches open and closed issues and pull requests before writing.
+- `scripts/versions.py` lists release lines from `SECURITY.md` or `SUPPORT.md`, maintenance branches, tags and npm dist-tags, and calls each `maintained`, `likely` or `unmaintained`.
+- `scripts/affects.py` runs one reproduction on several refs in worktrees and reports which are affected. A bug that shows only in unmaintained lines gets no issue: the user gets the version to upgrade to.
+- A security problem never becomes an issue. In the user's repo it goes to security-fix. In someone else's repo it becomes a private report for the user to send.
 
 ## perf-pass
 

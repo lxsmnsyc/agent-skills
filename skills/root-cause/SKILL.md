@@ -113,7 +113,7 @@ Fill in `templates/diagnosis.md`. Its Evidence part matches the Evidence line of
 | Verdict | Where it goes |
 | --- | --- |
 | `fix-small`: clear cause, small fix | pr-author: a fix PR with the regression test, against the branch the policy gives for a fix |
-| `fix-large`: clear cause, large or risky fix | A roadmap fix node with a `hard` dependency on the diagnose node, or an issue when no roadmap runs. Ask the user before opening an issue. |
+| `fix-large`: clear cause, large or risky fix | A roadmap fix node with a `hard` dependency on the diagnose node, or an issue when no roadmap runs, written with the issue-author skill. Ask the user before opening an issue. |
 | `no-seam`: no test can reach the real pattern | The fix as above, plus a refactor node or inbox entry for the seam |
 | `vulnerability`: reported, nothing written | security-fix, through the user only |
 | `no-loop`: nothing reproduces within the budget | The user, with what was tried and what to send |
