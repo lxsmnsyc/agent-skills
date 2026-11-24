@@ -1,6 +1,6 @@
 ---
 name: landing-page
-description: Rules for landing pages, homepages and marketing sites of any product, such as a library, CLI, web app, mobile app, API or physical product. The page shows a demo of the product or its effect. It sells the benefit and the difference from competitors instead of describing features. It keeps text short and lets visuals carry the page. It picks the selling points the visitor cares about, uses playful animation or interaction that shows what the product does, and shows who uses it when that proof is strong enough. Includes steps for each kind of product, a word count script and a review checklist. Use this skill whenever designing, writing, building or reviewing a landing page, product homepage, marketing site, the website/ folder of a repo, or a hero section, even if the user does not say "landing page". Load ui-style with it. This skill overrides only the ui-style rule against idle and first-paint animation. Every other ui-style rule still applies.
+description: Rules for landing pages, homepages and marketing sites of any product, such as a library, CLI, web app, mobile app, API or physical product. The page shows a demo of the product or its effect, with an animated or interactive hero visual chosen from designs the author reviews. It sells the benefit and the difference from competitors instead of describing features. It keeps text short and lets visuals carry the page. It picks the selling points the visitor cares about, uses playful animation or interaction that shows what the product does, and shows who uses it when that proof is strong enough. Includes steps for each kind of product, a word count script and a review checklist. Use this skill whenever designing, writing, building or reviewing a landing page, product homepage, marketing site, the website/ folder of a repo, or a hero section, even if the user does not say "landing page". Load ui-style with it. This skill overrides only the ui-style rule against idle and first-paint animation. Every other ui-style rule still applies.
 ---
 
 # Landing page
@@ -9,7 +9,7 @@ A landing page has one job: make a visitor want the product and take the first s
 
 Every landing page needs these things:
 
-1. A demo of the product or of its effect.
+1. A demo of the product or of its effect, and a hero visual that moves.
 2. Sections that sell the benefit and the difference from competitors.
 3. Playful UI: animation or interaction that shows what the product does.
 4. Proof of who uses it, when that proof is strong enough to help.
@@ -96,6 +96,41 @@ python3 skills/landing-page/scripts/word_count.py dist/index.html --budget 600 -
 - The support line says what the product is and who it is for, in one sentence.
 - Give the hero one primary CTA. A second action, such as "View on GitHub" or "See pricing", uses a quiet style.
 - Show the demo in the hero, or start it there and continue right below. A visitor should see the product working without scrolling far.
+- The hero visual is animated or interactive. A static snippet, screenshot or illustration alone is not enough. It can be the first frame of the animation. See "Hero visual".
+
+## Hero visual
+
+The hero visual shows the main selling point in motion. Pick from this order, and move down only when the option above cannot show that point well:
+
+1. **The product at work**: the real product, or a faithful model of it, doing its main task. Code that types itself and renders its output, a UI that runs its main flow, a request and its response arriving, a before and after that loops.
+2. **Something the visitor can use**: a small input, slider or toggle in the hero that changes the product's real output.
+3. **A concept in motion**: an animated diagram of what the product does, such as data flowing through it, requests fanning out to a cache, a build graph collapsing to one step, or files syncing between devices. Use this when the product has no visible surface (a library internal, a protocol, an infrastructure service), or when its effect is clearer as a model than as a screen.
+
+Rules for every hero visual:
+
+- It shows what the product does or the effect it has. A concept animation is faithful to how the product works: no steps, speeds or parts it does not have. Decoration, such as floating shapes or particles, does not count.
+- One idea, readable in about five seconds. It loops, or ends on a frame that states the result.
+- It follows the motion rules under "Playful UI": it pauses off screen, does not delay the largest contentful paint, and shows a still end state with `prefers-reduced-motion`.
+
+Examples by product kind:
+
+| Kind | Product at work | Concept in motion |
+| --- | --- | --- |
+| Library | The code types itself and the rendered output or result appears next to it | Data flowing through the library's pipeline, or the bundle shrinking against an alternative |
+| CLI | An animated terminal runs the command and prints the real output | The manual steps collapsing into one command |
+| Web app | The UI runs its main task with real-looking data | Inputs from several tools merging into the product's one result |
+| API | A request goes out and the real response streams back | Calls routing through the platform to the services behind it |
+| App | The app in a device frame runs its main flow | Data syncing between devices |
+| Hardware | Video of the product in use | An exploded view that assembles |
+
+### Propose designs before building
+
+The hero visual is the most expensive part of the page and the hardest to judge from a description, so the author picks it:
+
+1. Propose two or three designs. List product-at-work designs first, and add a concept design when one would show the selling point better. For each, write what moves, the selling point it shows, the still frame for reduced motion, and the build cost (CSS and SVG, a canvas, a recorded video, a live embed).
+2. When the user wants to compare them on screen, build the top two as rough prototypes on one review page, or behind a query parameter such as `?hero=b`. Keep them rough until one is picked.
+3. Build the rest of the page while the author decides. The hero visual has a fixed slot, so the choice does not change the layout.
+4. Remove the designs that were not picked before the page ships.
 
 ## Demo
 
@@ -205,6 +240,8 @@ Run this on a finished page. Every line passes, or the user has accepted the gap
 - [ ] The hero headline states a result, not a category.
 - [ ] The hero has one primary CTA.
 - [ ] A demo of the product or its effect is visible in or right below the hero.
+- [ ] The hero visual is animated or interactive and shows the main selling point. It is the product at work, unless a concept animation shows the point better and stays faithful to how the product works.
+- [ ] The author picked the hero visual from the proposed designs, and the others are gone from the page.
 - [ ] Snippets run as shown and have a copy button.
 - [ ] Each benefit section has a benefit headline, proof and the feature behind it.
 - [ ] At least one section shows the difference from named alternatives.

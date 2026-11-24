@@ -83,7 +83,7 @@ The visitor is buying an outcome from people, not software.
 
 For a product that fits none of the kinds above, answer the same six questions:
 
-1. What demo shows its effect?
+1. What demo shows its effect, and what moves in the hero?
 2. What does it do better than the named alternative?
 3. What interaction lets the visitor try the idea?
 4. What proof exists?
