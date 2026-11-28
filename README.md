@@ -12,6 +12,7 @@ Skills for Claude Code and other agents that support the Agent Skills format.
 - [`issue-author`](skills/issue-author/SKILL.md): write and open issues a maintainer can act on. Searches for duplicates, follows the repo's templates, and reproduces a bug on every release line the repo still maintains. No issue for a bug only in unmaintained versions, and none for a security problem.
 - [`perf-pass`](skills/perf-pass/SKILL.md): profile a finished feature, try several optimizations side by side, and keep the one with the best measured gain for its cost. Runtime for libraries and servers, bundle size for web apps.
 - [`changesets`](skills/changesets/SKILL.md): write the changeset for a change. The bump level follows whether the thing existed before; `major` only with the maintainer's approval.
+- [`scoped-checks`](skills/scoped-checks/SKILL.md): run tests, lint, format and typecheck on the files a change touches, not the whole project. A full run only for config changes, a final gate with no CI, or when asked. An optional hook blocks full runs.
 - [`repo-setup`](skills/repo-setup/SKILL.md): set up a new or old npm library repo: pnpm, changesets, tsdown, vitest, oxlint and oxfmt. Adds a check workflow and a release workflow with trusted publishing. Decides where property, model or oracle tests pay off, and finds implicit state machines.
 - [`security-fix`](skills/security-fix/SKILL.md): fix a vulnerability on a branch that is never pushed. The fix goes public when CI publishes the release, so npm provenance stays.
 - [`ts-style`](skills/ts-style/SKILL.md): style rules for `.ts` and `.js` code. for-of loops instead of callback Array methods, function declarations named with a verb, and the repo's linter after each edit.
@@ -91,7 +92,7 @@ Reviews answer four questions with evidence: is it the right change, does it wor
 - Fixes: `scripts/repro.py` runs the reproduction on the base and the head, in worktrees under `.git/review-worktrees/`, and reports `proven`, `not-reproduced`, `not-fixed` or `inconclusive`.
 - Features: checked against their roadmap node's acceptance criteria and owned paths. Features with no node get a roadmap proposal for the maintainer instead of an approval.
 - Blind review: the reviewer writes down what a complete change would include from the claim alone (`pr_info.py --blind`), before it reads the diff, then lists what is missing. `scripts/surface.py` finds docs, flags, env vars and messages outside the diff that still mention what the change removed or changed, and a missing changeset. For medium or high risk, or public API changes, a separate agent tests the docs without seeing the code.
-- Every change: `scripts/checks.py` finds and runs lint, typecheck, build and tests locally, so private repos never start billed CI. `--changed <base>` runs each check on the changed files only. `scripts/size_diff.py` measures build size.
+- Every change: scoped-checks' `checks.py` runs lint, typecheck, build and tests locally on the changed files, so private repos never start billed CI. `scripts/size_diff.py` measures build size.
 - Reviews are posted as comments, never as "request changes". The reviewer never approves. Approval goes to the maintainer, found by `scripts/pr_info.py`.
 
 ## root-cause
@@ -162,6 +163,20 @@ A second hook checks every write to `.changeset/*.md`. It blocks the write until
 
 ```json
 { "env": { "CHANGESETS_HOOK": "block" } }
+```
+
+## scoped-checks
+
+A full test suite or lint run after a small edit reads files the change never touched. This skill:
+
+- checks only the edited files while editing: the linter and formatter on their paths, and the test file that covers them
+- runs `scripts/checks.py --run --changed <base>` once when the change is done. Lint and format take the changed files, tests run through `vitest related` or `jest --findRelatedTests`, and typecheck and build run on the changed packages and their pnpm dependents
+- falls back to a full run when a config file changed, and keeps the full set for a final gate on a repo with no CI
+
+A third hook stops a full run such as `pnpm test`, `vitest run`, `eslint .` or `pytest`. Prefix a command with `SCOPED_CHECKS=full` to run it in full on purpose. Turn the hook on the same way:
+
+```json
+{ "env": { "SCOPED_CHECKS_HOOK": "block" } }
 ```
 
 ## landing-page

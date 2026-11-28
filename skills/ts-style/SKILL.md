@@ -118,7 +118,7 @@ function applyDamage(unit: Unit, amount: number): void { ... }
 
 ## Lint and format
 
-Most repos of this user extend `@lxsmnsyc/oxlint-config` and format with oxfmt. That config enforces about 150 rules, such as braces on every `if`, `prefer-const` and explicit return types. This skill does not repeat them. After editing, run the repo's linter and formatter on the files you changed, not on the whole repo. Take the command from the lint script (often `oxlint --type-aware`) and pass the file paths, for example `pnpm exec oxlint --type-aware src/a.ts src/b.ts`. Fix what they report. pr-review's `checks.py --changed` does this for every check.
+Most repos of this user extend `@lxsmnsyc/oxlint-config` and format with oxfmt. That config enforces about 150 rules, such as braces on every `if`, `prefer-const` and explicit return types. This skill does not repeat them. After editing, run the repo's linter and formatter on the files you changed, not on the whole repo. Take the command from the lint script (often `oxlint --type-aware`) and pass the file paths, for example `pnpm exec oxlint --type-aware src/a.ts src/b.ts`. Fix what they report. The scoped-checks skill covers the other checks.
 
 ## Before finishing
 

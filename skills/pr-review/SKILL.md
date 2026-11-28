@@ -31,7 +31,6 @@ python3 <skill>/scripts/pr_info.py --local --base main --head fix/x
 python3 <skill>/scripts/pr_info.py 42 --blind                # the same, without the changed files
 python3 <skill>/scripts/branch_policy.py --type feature --base main    # does this kind of change belong on that base?
 python3 <skill>/scripts/worktrees.py prepare --pr 42         # base and head side by side in .git/review-worktrees/
-python3 <skill>/scripts/checks.py <dir> [--run] [--install] [--changed <base>]  # detect and run lint, typecheck, build, tests; --changed scopes them to the changed files
 python3 <skill>/scripts/repro.py <base> <head> --copy <test> -- <command>   # fails on base, passes on head?
 python3 <skill>/scripts/size_diff.py <base> <head> --glob 'dist/**/*.js'     # build output size, raw and gzip
 python3 <skill>/scripts/surface.py --base <base> --head <head>               # mentions outside the diff of what it removed or changed
@@ -56,7 +55,7 @@ Check the repo's visibility. On a private repo, never trigger, re-run or wait on
 
 Both worktrees get the gitignored files that `.worktreeinclude` names (such as `.env`), copied from the current checkout and listed under `copied`. A check that fails in both worktrees for lack of a gitignored file is not the PR's fault. Report the missing file and suggest adding its pattern to `.worktreeinclude`.
 
-Install dependencies in each worktree only when a step needs to run code (`checks.py --install`). Installs are slow, so do it once per worktree.
+Install dependencies in each worktree only when a step needs to run code (scoped-checks' `checks.py --install`). Installs are slow, so do it once per worktree.
 
 ### 2b. Expect
 
@@ -93,7 +92,7 @@ Read `references/evaluation.md` for the full criteria and how to measure cost.
 
 ### 4. Required checks (every PR)
 
-Run `checks.py <head> --run --install --changed <base>`. It scopes each check to the PR's changed files. Lint and format run on those files and tests on the related tests. Typecheck and build run on the packages that hold them, plus their dependents in a pnpm workspace. A changed config file runs that check in full. Run without `--changed` only when no CI runs the full set before merge (a private repo, or no check workflow) and the change touches a module other packages import. Every detected check must pass: lint, format, typecheck, build, tests. When a check also fails on the base, say so; it is not this PR's fault, but it still blocks a clean merge.
+Run `python3 <skills>/scoped-checks/scripts/checks.py <head> --run --install --changed <base>`. It runs each check on the PR's changed files only (see the scoped-checks skill), and in full when a config file changed. Run without `--changed` only when no CI runs the full set before merge (a private repo, or no check workflow) and the change touches a module other packages import. Every detected check must pass: lint, format, typecheck, build, tests. When a check also fails on the base, say so; it is not this PR's fault, but it still blocks a clean merge.
 
 On a public repo where CI already ran, `gh pr checks` results count, but still run the checks locally when CI is missing, failed for an unclear reason, or does not cover a kind of check.
 
