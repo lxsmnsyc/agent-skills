@@ -104,7 +104,8 @@ def names_a_file(cwd, args):
 
 def full_run(cwd, tokens):
     """The kind of check a full run does, or None when the command is scoped or not a check."""
-    while tokens and re.match(r"^\w+=", tokens[0]):
+    # Env assignments and wrappers that run the command as given, such as rtk.
+    while tokens and (re.match(r"^\w+=", tokens[0]) or tokens[0] in ("rtk", "time", "env")):
         tokens = tokens[1:]
     if not tokens:
         return None

@@ -113,7 +113,7 @@ class HookTest(unittest.TestCase):
         for cmd in ("pnpm test", "npm run lint", "pnpm -r test", "pnpm exec vitest run", "npx eslint .",
                     "prettier --check .", "oxfmt", "ruff check .", "pytest tests/", "python3 -m pytest",
                     "go test ./...", "cd src && pnpm lint", "pnpm build && pnpm test",
-                    "python3 /x/checks.py . --run"):
+                    "python3 /x/checks.py . --run", "rtk pnpm test"):
             r = self.hook(cmd)
             self.assertEqual(r.returncode, 2, cmd)
             self.assertIn("SCOPED_CHECKS=full", r.stderr)
