@@ -91,7 +91,7 @@ Reviews answer four questions with evidence: is it the right change, does it wor
 - Fixes: `scripts/repro.py` runs the reproduction on the base and the head, in worktrees under `.git/review-worktrees/`, and reports `proven`, `not-reproduced`, `not-fixed` or `inconclusive`.
 - Features: checked against their roadmap node's acceptance criteria and owned paths. Features with no node get a roadmap proposal for the maintainer instead of an approval.
 - Blind review: the reviewer writes down what a complete change would include from the claim alone (`pr_info.py --blind`), before it reads the diff, then lists what is missing. `scripts/surface.py` finds docs, flags, env vars and messages outside the diff that still mention what the change removed or changed, and a missing changeset. For medium or high risk, or public API changes, a separate agent tests the docs without seeing the code.
-- Every change: `scripts/checks.py` finds and runs lint, typecheck, build and tests locally, so private repos never start billed CI. `scripts/size_diff.py` measures build size.
+- Every change: `scripts/checks.py` finds and runs lint, typecheck, build and tests locally, so private repos never start billed CI. `--changed <base>` runs each check on the changed files only. `scripts/size_diff.py` measures build size.
 - Reviews are posted as comments, never as "request changes". The reviewer never approves. Approval goes to the maintainer, found by `scripts/pr_info.py`.
 
 ## root-cause

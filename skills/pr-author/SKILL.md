@@ -91,7 +91,9 @@ A vulnerability is the exception. Do not open a fix PR, an issue or an inbox ent
 
 ### 5. Check
 
-Run the project's checks in the worktree: `python3 <skills>/pr-review/scripts/checks.py <worktree> --run --install`. All of them must pass. When a check also fails on the base, say so in the PR and do not try to fix unrelated failures in this PR.
+Run the project's checks in the worktree on what the branch changed: `python3 <skills>/pr-review/scripts/checks.py <worktree> --run --install --changed <base>`. Lint and format run on the changed files, tests on the tests related to them, typecheck and build on the packages that hold them. A changed config file (package.json, a lockfile, tsconfig, `*.config.*`) makes the script run that check in full on its own. All of them must pass.
+
+While editing, check only what the last edit touched: the linter and formatter on the edited files and the test file that covers them. Do not run the full suite, typecheck or lint after each edit. When a check also fails on the base, say so in the PR and do not try to fix unrelated failures in this PR.
 
 ### 5b. Performance pass
 
@@ -123,7 +125,7 @@ Return the verdict, the checks result, the expectation counts, and the findings,
 
 Give the claim, not your summary of the code: the reviewer must form its own expectations from what the change is for. When the reviewer reports "docs tests needed", spawn the docs-test agent from pr-review's `references/blind-review.md` yourself and send the failures back to the reviewer, or as a roadmap worker report it to the orchestrator.
 
-**Self mode.** Review the branch yourself in this session. No new agent loads the repo again, so it costs less, but you will tend to agree with your own reasoning. Two steps work against that. First, write down what a complete change would include from the brief or issue alone (the kinds in pr-review's `references/blind-review.md`: behavior, edge cases, callers, public surface, docs, tests, release), then check the diff against that list. Second, run pr-review's `surface.py --base <base> --head <branch>` and fix every stale mention it finds. Then read `git diff <base>...<branch>` from start to end as if someone else wrote it. Go through pr-review's `references/evaluation.md` (correctness, simplicity, cost, risk), and run the full checks once with `checks.py --run`. Sort what you find into the same four groups. A self-review never counts toward auto-merge.
+**Self mode.** Review the branch yourself in this session. No new agent loads the repo again, so it costs less, but you will tend to agree with your own reasoning. Two steps work against that. First, write down what a complete change would include from the brief or issue alone (the kinds in pr-review's `references/blind-review.md`: behavior, edge cases, callers, public surface, docs, tests, release), then check the diff against that list. Second, run pr-review's `surface.py --base <base> --head <branch>` and fix every stale mention it finds. Then read `git diff <base>...<branch>` from start to end as if someone else wrote it. Go through pr-review's `references/evaluation.md` (correctness, simplicity, cost, risk), and run the checks once with `checks.py --run --changed <base>`. Sort what you find into the same four groups. A self-review never counts toward auto-merge.
 
 Then:
 
